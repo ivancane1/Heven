@@ -55,7 +55,8 @@ const CSS = `
   .card{border-radius:12px;overflow:hidden;border:2px solid transparent;cursor:pointer;transition:.25s;position:relative;background:var(--linen)}
   .card.sel{border-color:var(--terra);transform:scale(.97)}
   .card:hover{transform:scale(.98)}
-  .swatch{height:110px;display:flex;align-items:center;justify-content:center;font-size:42px;position:relative}
+  .swatch{height:130px;display:flex;align-items:center;justify-content:center;font-size:42px;position:relative;overflow:hidden}
+  .pimg{width:100%;height:130px;object-fit:cover;display:block}
   .check{position:absolute;top:8px;right:8px;width:22px;height:22px;border-radius:50%;background:var(--terra);color:#fff;font-size:12px;display:flex;align-items:center;justify-content:center;opacity:0;transition:.2s}
   .card.sel .check{opacity:1}
   .cinfo{padding:10px 12px 12px}
@@ -72,24 +73,18 @@ const CSS = `
   .ltxt{font-family:'Cormorant Garamond',serif;font-size:22px;color:var(--dark);font-weight:300}
   .lsub{font-size:12px;color:var(--gray);letter-spacing:.08em;line-height:1.6}
   .lprog{width:100%;max-width:200px;height:2px;background:var(--linen);border-radius:2px;overflow:hidden;margin-top:4px}
-  .lprogbar{height:100%;background:var(--terra);border-radius:2px;animation:prog 20s linear forwards}
+  .lprogbar{height:100%;background:var(--terra);border-radius:2px;animation:prog 25s linear forwards}
   @keyframes prog{from{width:0%}to{width:95%}}
-
-  /* Imagen generada */
-  .genimg-wrap{position:relative;border-radius:16px;overflow:hidden;margin-bottom:12px;background:var(--linen)}
+  .genimg-wrap{position:relative;border-radius:16px;overflow:hidden;margin-bottom:12px}
   .genimg{width:100%;display:block;border-radius:16px}
   .genbadge{position:absolute;top:12px;left:12px;background:rgba(181,96,58,.92);color:#fff;padding:5px 12px;border-radius:20px;font-size:10px;font-weight:500;letter-spacing:.1em;text-transform:uppercase;backdrop-filter:blur(4px)}
   .aibadge{position:absolute;top:12px;right:12px;background:rgba(0,0,0,.7);color:#fff;padding:5px 10px;border-radius:20px;font-size:10px;letter-spacing:.06em;backdrop-filter:blur(4px)}
-
-  /* Comparación original/generada */
   .toggle-row{display:flex;gap:8px;margin-bottom:20px}
   .tglbtn{flex:1;padding:9px;border-radius:10px;border:1.5px solid var(--linen);background:none;font-family:'Jost',sans-serif;font-size:11px;font-weight:500;letter-spacing:.08em;color:var(--gray);cursor:pointer;transition:.2s;text-transform:uppercase}
   .tglbtn.on{border-color:var(--terra);color:var(--terra);background:#FEF4EF}
-
   .riwrap{position:relative;border-radius:16px;overflow:hidden;margin-bottom:12px}
   .rimg{width:100%;height:220px;object-fit:cover;display:block}
   .rbadge{position:absolute;top:12px;left:12px;background:rgba(44,44,44,.85);color:#fff;padding:5px 12px;border-radius:20px;font-size:10px;font-weight:500;letter-spacing:.1em;text-transform:uppercase;backdrop-filter:blur(4px)}
-
   .chips{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:20px}
   .chip{background:var(--linen);border-radius:20px;padding:5px 12px;font-size:11px;color:var(--dark)}
   .rcard{background:linear-gradient(135deg,#F8F4EE,#F2EBE0);border-radius:16px;padding:20px;margin-bottom:16px;border-left:3px solid var(--terra)}
@@ -104,8 +99,7 @@ const CSS = `
   .btn2:hover{background:var(--terra);color:#fff}
   .btnwa{width:100%;padding:16px;background:#25D366;color:#fff;border:none;border-radius:12px;font-family:'Jost',sans-serif;font-size:13px;font-weight:500;letter-spacing:.1em;text-transform:uppercase;cursor:pointer;transition:.25s;display:flex;align-items:center;justify-content:center;gap:8px;margin-bottom:10px;text-decoration:none}
   .btnwa:hover{background:#1db954;transform:translateY(-1px)}
-  .moverlay{position:fixed;inset:0;background:rgba(0,0,0,.5);display:flex;align-items:flex-end;justify-content:center;z-index:200;backdrop-filter:blur(4px);animation:fin .3s}
-  @keyframes fin{from{opacity:0}to{opacity:1}}
+  .moverlay{position:fixed;inset:0;background:rgba(0,0,0,.5);display:flex;align-items:flex-end;justify-content:center;z-index:200;backdrop-filter:blur(4px)}
   .modal{background:var(--white);border-radius:24px 24px 0 0;padding:32px 24px 40px;width:100%;max-width:430px;animation:sup .35s}
   @keyframes sup{from{transform:translateY(100%)}to{transform:translateY(0)}}
   .mhandle{width:40px;height:4px;background:var(--linen);border-radius:2px;margin:0 auto 24px}
@@ -115,17 +109,12 @@ const CSS = `
   .minput{width:100%;padding:14px 16px;border:1.5px solid var(--linen);border-radius:12px;font-family:'Jost',sans-serif;font-size:14px;color:var(--dark);background:var(--cream);outline:none;margin-bottom:12px;transition:.2s}
   .minput:focus{border-color:var(--terra)}
   .mskip{width:100%;padding:12px;background:none;border:none;font-family:'Jost',sans-serif;font-size:12px;color:var(--gray);cursor:pointer;text-decoration:underline;margin-top:4px}
-  .mok{text-align:center;padding:12px 0}
-  .mokico{font-size:40px;margin-bottom:12px}
-  .moktxt{font-family:'Cormorant Garamond',serif;font-size:20px;color:var(--dark)}
-  .moksub{font-size:12px;color:var(--gray);margin-top:6px;line-height:1.6}
   .err{background:#FEF0EC;border:1px solid #F5C6B4;border-radius:12px;padding:14px 16px;font-size:13px;color:var(--terra);line-height:1.5;margin-bottom:16px}
   .banner{background:var(--dark);color:#fff;padding:12px 20px;text-align:center;font-size:12px;letter-spacing:.06em;line-height:1.6}
   .banner strong{color:var(--terra-l)}
   .ubox{text-align:center;margin-top:16px;padding:14px 16px;background:var(--linen);border-radius:12px}
 `
 
-// ── Construye el prompt para Fal.ai ─────────────────────────
 function buildFalPrompt(selectedProducts, aiResult) {
   const productNames = selectedProducts.map(p => p.tags).join(', ')
   const style = aiResult?.style || 'moderno y cálido'
@@ -140,19 +129,17 @@ export default function App() {
   const [sel, setSel]           = useState([])
   const [cat, setCat]           = useState(CATEGORIES[0])
   const [result, setResult]     = useState(null)
-  const [genImg, setGenImg]     = useState(null)   // imagen generada por Fal.ai
-  const [showGen, setShowGen]   = useState(true)   // toggle original/generada
-  const [loadStep, setLoadStep] = useState('')     // texto del loading
+  const [genImg, setGenImg]     = useState(null)
+  const [showGen, setShowGen]   = useState(true)
+  const [loadStep, setLoadStep] = useState('')
   const [loading, setLoading]   = useState(false)
   const [error, setError]       = useState(null)
-
   const [user, setUser]         = useState(null)
   const [anonUsed, setAnonUsed] = useState(false)
   const [modal, setModal]       = useState(false)
   const [mstate, setMstate]     = useState('form')
   const [email, setEmail]       = useState('')
   const [sending, setSending]   = useState(false)
-
   const fileRef = useRef()
 
   useEffect(() => {
@@ -204,13 +191,17 @@ export default function App() {
           productList,
         }),
       })
-      if (!res1.ok) throw new Error(`analyze HTTP ${res1.status}`)
+
       const data1 = await res1.json()
-      const text = data1.content?.find(b => b.type === 'text')?.text || ''
-      const parsed = JSON.parse(text.replace(/```json|```/g, '').trim())
+
+      if (!res1.ok || data1.error) {
+        throw new Error(data1.error || `Error del servidor: ${res1.status}`)
+      }
+
+      const parsed = data1.result  // ya viene parseado del servidor
       setResult(parsed)
 
-      // PASO 2 — Fal.ai genera la imagen compuesta
+      // PASO 2 — Fal.ai genera la imagen
       setLoadStep('Generando la visualización con IA…')
       const falPrompt = buildFalPrompt(sel, parsed)
       const res2 = await fetch('/api/generate', {
@@ -230,19 +221,18 @@ export default function App() {
           setShowGen(true)
         }
       } else {
-        // Si falla Fal.ai, continuamos igual con el análisis de Claude
-        console.warn('Fal.ai no disponible, mostrando análisis de texto')
+        console.warn('Fal.ai falló, mostrando solo análisis de texto')
         setShowGen(false)
       }
 
-      // PASO 3 — Guardar en Supabase
+      // PASO 3 — Guardar
       await saveVisualization({ userId: user?.id, selectedProducts: sel, aiResult: parsed })
       if (!user) { await registerAnonUsage(); setAnonUsed(true) }
 
       setScreen(3)
     } catch (err) {
       console.error(err)
-      setError('Hubo un problema al analizar. Verificá tu conexión e intentá de nuevo.')
+      setError(err.message || 'Hubo un problema. Verificá tu conexión e intentá de nuevo.')
     } finally {
       setLoading(false)
       setLoadStep('')
@@ -302,7 +292,7 @@ export default function App() {
           <div className={`sline ${screen >= 3 ? 'on' : ''}`} />
         </div>
 
-        {/* ── PANTALLA 1: FOTO ── */}
+        {/* ── PANTALLA 1 ── */}
         {screen === 1 && (
           <div className="screen">
             <div className="eye">Paso 1 de 3</div>
@@ -325,9 +315,7 @@ export default function App() {
               )}
             </div>
 
-            <button className="btn" disabled={!imgPrev} onClick={() => setScreen(2)}>
-              Continuar →
-            </button>
+            <button className="btn" disabled={!imgPrev} onClick={() => setScreen(2)}>Continuar →</button>
 
             <div className="tip">
               <span className="tipico">💡</span>
@@ -337,15 +325,13 @@ export default function App() {
             {!user && (
               <p style={{textAlign:'center',marginTop:20,fontSize:12,color:'var(--gray)'}}>
                 ¿Ya tenés cuenta?{' '}
-                <span style={{color:'var(--terra)',cursor:'pointer',textDecoration:'underline'}} onClick={() => setModal(true)}>
-                  Ingresá acá
-                </span>
+                <span style={{color:'var(--terra)',cursor:'pointer',textDecoration:'underline'}} onClick={() => setModal(true)}>Ingresá acá</span>
               </p>
             )}
           </div>
         )}
 
-        {/* ── PANTALLA 2: PRODUCTOS ── */}
+        {/* ── PANTALLA 2 ── */}
         {screen === 2 && (
           <div className="screen">
             <div className="eye">Paso 2 de 3</div>
@@ -359,7 +345,7 @@ export default function App() {
                   <div className="selct">{sel.length} de 4</div>
                 </div>
                 <div style={{display:'flex',gap:6}}>
-                  {sel.map(p => <span key={p.id} style={{fontSize:20}}>{p.emoji}</span>)}
+                  {sel.map(p => <span key={p.id} style={{fontSize:20}}>{p.image ? '🖼️' : p.emoji}</span>)}
                 </div>
               </div>
             )}
@@ -375,8 +361,11 @@ export default function App() {
                 const isSel = sel.find(x => x.id === p.id)
                 return (
                   <div key={p.id} className={`card ${isSel ? 'sel' : ''}`} onClick={() => toggle(p)}>
-                    <div className="swatch" style={{background:`linear-gradient(135deg,${p.colors[2]}88,${p.colors[0]}cc)`}}>
-                      <span>{p.emoji}</span>
+                    <div className="swatch" style={!p.image ? {background:`linear-gradient(135deg,${p.colors[2]}88,${p.colors[0]}cc)`} : {}}>
+                      {p.image
+                        ? <img src={p.image} className="pimg" alt={p.name} onError={e => { e.target.style.display='none' }} />
+                        : <span>{p.emoji}</span>
+                      }
                       <div className="check">✓</div>
                     </div>
                     <div className="cinfo">
@@ -416,25 +405,19 @@ export default function App() {
           </div>
         )}
 
-        {/* ── PANTALLA 3: RESULTADO ── */}
+        {/* ── PANTALLA 3 ── */}
         {screen === 3 && result && !loading && (
           <div className="screen">
             <div className="eye">Tu visualización</div>
             <h1 className="h1">Así <em>quedaría</em></h1>
 
-            {/* Toggle original / generada */}
             {genImg && (
               <div className="toggle-row">
-                <button className={`tglbtn ${showGen ? 'on' : ''}`} onClick={() => setShowGen(true)}>
-                  ✦ Con productos
-                </button>
-                <button className={`tglbtn ${!showGen ? 'on' : ''}`} onClick={() => setShowGen(false)}>
-                  Tu foto original
-                </button>
+                <button className={`tglbtn ${showGen ? 'on' : ''}`} onClick={() => setShowGen(true)}>✦ Con productos</button>
+                <button className={`tglbtn ${!showGen ? 'on' : ''}`} onClick={() => setShowGen(false)}>Tu foto original</button>
               </div>
             )}
 
-            {/* Imagen generada por Fal.ai */}
             {genImg && showGen && (
               <div className="genimg-wrap">
                 <img src={genImg} className="genimg" alt="Tu espacio con productos" />
@@ -443,11 +426,10 @@ export default function App() {
               </div>
             )}
 
-            {/* Foto original (si no hay generada o toggle) */}
             {(!genImg || !showGen) && (
               <div className="riwrap">
                 <img src={imgPrev} className="rimg" style={{height:'auto',maxHeight:280}} alt="Tu espacio" />
-                <div className="rbadge">📷 Foto original</div>
+                <div className="rbadge">📷 {!genImg ? result.style : 'Foto original'}</div>
               </div>
             )}
 
@@ -489,12 +471,8 @@ export default function App() {
 
             {!user && (
               <div className="ubox">
-                <p style={{fontSize:12,color:'var(--dark)',lineHeight:1.6,marginBottom:8}}>
-                  Guardá tus visualizaciones y accedé sin límites
-                </p>
-                <button className="btn" style={{margin:0}} onClick={() => setModal(true)}>
-                  Crear cuenta gratis
-                </button>
+                <p style={{fontSize:12,color:'var(--dark)',lineHeight:1.6,marginBottom:8}}>Guardá tus visualizaciones y accedé sin límites</p>
+                <button className="btn" style={{margin:0}} onClick={() => setModal(true)}>Crear cuenta gratis</button>
               </div>
             )}
 
@@ -504,7 +482,7 @@ export default function App() {
           </div>
         )}
 
-        {/* ── MODAL LOGIN ── */}
+        {/* ── MODAL ── */}
         {modal && (
           <div className="moverlay" onClick={e => e.target === e.currentTarget && setModal(false)}>
             <div className="modal">
@@ -513,21 +491,19 @@ export default function App() {
                 <>
                   <div className="mttl">Seguí <em>visualizando</em></div>
                   <p className="msub">Ingresá tu email y te mandamos un link para acceder — sin contraseña.</p>
-                  <input
-                    className="minput" type="email" placeholder="tu@email.com"
+                  <input className="minput" type="email" placeholder="tu@email.com"
                     value={email} onChange={e => setEmail(e.target.value)}
-                    onKeyDown={e => e.key === 'Enter' && sendLink()}
-                  />
+                    onKeyDown={e => e.key === 'Enter' && sendLink()} />
                   <button className="btn" style={{margin:0}} disabled={!email || sending} onClick={sendLink}>
                     {sending ? 'Enviando...' : 'Enviar link de acceso →'}
                   </button>
                   <button className="mskip" onClick={() => setModal(false)}>Cerrar</button>
                 </>
               ) : (
-                <div className="mok">
-                  <div className="mokico">📬</div>
-                  <div className="moktxt">¡Revisá tu email!</div>
-                  <p className="moksub">Te mandamos un link a <strong>{email}</strong>.<br />Tocalo para acceder sin límites.</p>
+                <div style={{textAlign:'center',padding:'12px 0'}}>
+                  <div style={{fontSize:40,marginBottom:12}}>📬</div>
+                  <div style={{fontFamily:'Cormorant Garamond,serif',fontSize:20,color:'var(--dark)'}}>¡Revisá tu email!</div>
+                  <p style={{fontSize:12,color:'var(--gray)',marginTop:6,lineHeight:1.6}}>Te mandamos un link a <strong>{email}</strong>.<br />Tocalo para acceder sin límites.</p>
                   <button className="mskip" onClick={() => { setModal(false); setMstate('form') }}>Cerrar</button>
                 </div>
               )}

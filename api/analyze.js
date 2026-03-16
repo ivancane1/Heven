@@ -11,6 +11,12 @@ export default async function handler(req, res) {
     return
   }
 
+  // Verificar que la imagen no sea demasiado grande (max ~4MB en base64)
+  if (imageBase64.length > 5_500_000) {
+    res.status(400).json({ error: 'La imagen es demasiado grande. Usá una foto de menos de 4MB.' })
+    return
+  }
+
   try {
     const response = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
@@ -36,7 +42,7 @@ export default async function handler(req, res) {
               },
               {
                 type: 'text',
-                text: `Sos un experto en diseño de interiores y textiles del hogar. Analizá esta foto del espacio del cliente y estos productos que quiere visualizar:\n\n${productList}\n\nRespondé SOLO en JSON con esta estructura exacta (sin markdown, sin explicaciones):\n{\n  "harmony": "Descripción poética de 2-3 líneas de cómo estos productos transformarían el espacio",\n  "style": "Nombre del estilo decorativo del espacio (ej: Nórdico Cálido)",\n  "suggestions": ["consejo 1", "consejo 2", "consejo 3"],\n  "colorNote": "Observación sobre la paleta de colores del espacio y cómo los productos la complementan"\n}`,
+                text: `Sos un experto en diseño de interiores y textiles del hogar. Analizá esta foto del espacio del cliente y estos productos que quiere visualizar:\n\n${productList}\n\nRespondé SOLO en JSON con esta estructura exacta, sin markdown, sin texto antes o después:\n{"harmony":"descripción poética de 2-3 líneas de cómo estos productos transformarían el espacio","style":"nombre del estilo decorativo (ej: Nórdico Cálido)","suggestions":["consejo 1","consejo 2","consejo 3"],"colorNote":"observación sobre la paleta de colores del espacio y cómo los productos la complementan"}`,
               },
             ],
           },
@@ -44,10 +50,35 @@ export default async function handler(req, res) {
       }),
     })
 
+    if (!response.ok) {
+      const errBody = await response.text()
+      console.error('Anthropic API error:', response.status, errBody)
+      res.status(502).json({ error: `Error de la API de análisis: ${response.status}` })
+      return
+    }
+
     const data = await response.json()
-    res.status(200).json(data)
+
+    // Extraer y validar el JSON de la respuesta
+    const rawText = data.content?.find(b => b.type === 'text')?.text || ''
+    const clean = rawText.replace(/```json|```/g, '').trim()
+
+    if (!clean) {
+      res.status(502).json({ error: 'La IA no devolvió una respuesta válida' })
+      return
+    }
+
+    // Parsear acá en el servidor para dar mejor error si falla
+    try {
+      const parsed = JSON.parse(clean)
+      res.status(200).json({ result: parsed })
+    } catch (parseErr) {
+      console.error('JSON parse error, raw text:', clean)
+      res.status(502).json({ error: 'Error procesando la respuesta de la IA' })
+    }
+
   } catch (err) {
-    console.error('Error Anthropic:', err)
+    console.error('Error en /api/analyze:', err)
     res.status(500).json({ error: 'Error interno del servidor' })
   }
 }
