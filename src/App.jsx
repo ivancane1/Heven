@@ -66,14 +66,30 @@ const CSS = `
   .selbar{background:var(--dark);border-radius:12px;padding:14px 16px;display:flex;align-items:center;justify-content:space-between;margin-bottom:16px}
   .selinfo{font-size:12px;color:rgba(255,255,255,.7)}
   .selct{font-family:'Cormorant Garamond',serif;font-size:20px;color:#fff}
-  .loading{display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:60vh;gap:20px;text-align:center}
-  .spin{width:48px;height:48px;border:2px solid var(--linen);border-top-color:var(--terra);border-radius:50%;animation:spin 1s linear infinite}
+  .loading{display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:70vh;gap:16px;text-align:center;padding:0 24px}
+  .spin{width:52px;height:52px;border:2px solid var(--linen);border-top-color:var(--terra);border-radius:50%;animation:spin 1s linear infinite}
   @keyframes spin{to{transform:rotate(360deg)}}
-  .ltxt{font-family:'Cormorant Garamond',serif;font-size:20px;color:var(--dark);font-weight:300}
-  .lsub{font-size:12px;color:var(--gray);letter-spacing:.08em}
-  .riwrap{position:relative;border-radius:16px;overflow:hidden;margin-bottom:20px}
-  .rimg{width:100%;height:220px;object-fit:cover;display:block;filter:brightness(.97)}
-  .rbadge{position:absolute;top:12px;left:12px;background:rgba(181,96,58,.92);color:#fff;padding:5px 12px;border-radius:20px;font-size:10px;font-weight:500;letter-spacing:.1em;text-transform:uppercase;backdrop-filter:blur(4px)}
+  .ltxt{font-family:'Cormorant Garamond',serif;font-size:22px;color:var(--dark);font-weight:300}
+  .lsub{font-size:12px;color:var(--gray);letter-spacing:.08em;line-height:1.6}
+  .lprog{width:100%;max-width:200px;height:2px;background:var(--linen);border-radius:2px;overflow:hidden;margin-top:4px}
+  .lprogbar{height:100%;background:var(--terra);border-radius:2px;animation:prog 20s linear forwards}
+  @keyframes prog{from{width:0%}to{width:95%}}
+
+  /* Imagen generada */
+  .genimg-wrap{position:relative;border-radius:16px;overflow:hidden;margin-bottom:12px;background:var(--linen)}
+  .genimg{width:100%;display:block;border-radius:16px}
+  .genbadge{position:absolute;top:12px;left:12px;background:rgba(181,96,58,.92);color:#fff;padding:5px 12px;border-radius:20px;font-size:10px;font-weight:500;letter-spacing:.1em;text-transform:uppercase;backdrop-filter:blur(4px)}
+  .aibadge{position:absolute;top:12px;right:12px;background:rgba(0,0,0,.7);color:#fff;padding:5px 10px;border-radius:20px;font-size:10px;letter-spacing:.06em;backdrop-filter:blur(4px)}
+
+  /* Comparación original/generada */
+  .toggle-row{display:flex;gap:8px;margin-bottom:20px}
+  .tglbtn{flex:1;padding:9px;border-radius:10px;border:1.5px solid var(--linen);background:none;font-family:'Jost',sans-serif;font-size:11px;font-weight:500;letter-spacing:.08em;color:var(--gray);cursor:pointer;transition:.2s;text-transform:uppercase}
+  .tglbtn.on{border-color:var(--terra);color:var(--terra);background:#FEF4EF}
+
+  .riwrap{position:relative;border-radius:16px;overflow:hidden;margin-bottom:12px}
+  .rimg{width:100%;height:220px;object-fit:cover;display:block}
+  .rbadge{position:absolute;top:12px;left:12px;background:rgba(44,44,44,.85);color:#fff;padding:5px 12px;border-radius:20px;font-size:10px;font-weight:500;letter-spacing:.1em;text-transform:uppercase;backdrop-filter:blur(4px)}
+
   .chips{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:20px}
   .chip{background:var(--linen);border-radius:20px;padding:5px 12px;font-size:11px;color:var(--dark)}
   .rcard{background:linear-gradient(135deg,#F8F4EE,#F2EBE0);border-radius:16px;padding:20px;margin-bottom:16px;border-left:3px solid var(--terra)}
@@ -109,32 +125,39 @@ const CSS = `
   .ubox{text-align:center;margin-top:16px;padding:14px 16px;background:var(--linen);border-radius:12px}
 `
 
-export default function App() {
-  const [screen, setScreen]   = useState(1)
-  const [imgFile, setImgFile] = useState(null)
-  const [imgPrev, setImgPrev] = useState(null)
-  const [img64, setImg64]     = useState(null)
-  const [sel, setSel]         = useState([])
-  const [cat, setCat]         = useState(CATEGORIES[0])
-  const [result, setResult]   = useState(null)
-  const [loading, setLoading] = useState(false)
-  const [error, setError]     = useState(null)
+// ── Construye el prompt para Fal.ai ─────────────────────────
+function buildFalPrompt(selectedProducts, aiResult) {
+  const productNames = selectedProducts.map(p => p.tags).join(', ')
+  const style = aiResult?.style || 'moderno y cálido'
+  return `Interior design photo. Add these home textile products naturally placed in the scene: ${productNames}. Style: ${style}. Keep the room architecture exactly the same, only add the textiles. Photorealistic, professional interior photography, natural lighting.`
+}
 
-  // Auth — siempre string o null, NUNCA Promise
-  const [user, setUser]           = useState(null)
-  const [anonUsed, setAnonUsed]   = useState(false)
-  const [modal, setModal]         = useState(false)
-  const [mstate, setMstate]       = useState('form')
-  const [email, setEmail]         = useState('')
-  const [sending, setSending]     = useState(false)
+export default function App() {
+  const [screen, setScreen]     = useState(1)
+  const [imgFile, setImgFile]   = useState(null)
+  const [imgPrev, setImgPrev]   = useState(null)
+  const [img64, setImg64]       = useState(null)
+  const [sel, setSel]           = useState([])
+  const [cat, setCat]           = useState(CATEGORIES[0])
+  const [result, setResult]     = useState(null)
+  const [genImg, setGenImg]     = useState(null)   // imagen generada por Fal.ai
+  const [showGen, setShowGen]   = useState(true)   // toggle original/generada
+  const [loadStep, setLoadStep] = useState('')     // texto del loading
+  const [loading, setLoading]   = useState(false)
+  const [error, setError]       = useState(null)
+
+  const [user, setUser]         = useState(null)
+  const [anonUsed, setAnonUsed] = useState(false)
+  const [modal, setModal]       = useState(false)
+  const [mstate, setMstate]     = useState('form')
+  const [email, setEmail]       = useState('')
+  const [sending, setSending]   = useState(false)
 
   const fileRef = useRef()
 
   useEffect(() => {
-    // Resolver las promesas ANTES de setear estado
     getCurrentUser().then(u => setUser(u))
     checkAnonUsage().then(v => setAnonUsed(v))
-
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_e, session) => {
       setUser(session?.user ?? null)
     })
@@ -165,11 +188,14 @@ export default function App() {
     if (!user && anonUsed) { setModal(true); return }
     setLoading(true)
     setError(null)
+    setGenImg(null)
 
     const productList = sel.map(p => `• ${p.name} (${p.detail}): ${p.tags}`).join('\n')
 
     try {
-      const res = await fetch('/api/analyze', {
+      // PASO 1 — Claude analiza el espacio
+      setLoadStep('Analizando tu espacio…')
+      const res1 = await fetch('/api/analyze', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -178,22 +204,48 @@ export default function App() {
           productList,
         }),
       })
-
-      if (!res.ok) throw new Error(`HTTP ${res.status}`)
-
-      const data = await res.json()
-      const text = data.content?.find(b => b.type === 'text')?.text || ''
+      if (!res1.ok) throw new Error(`analyze HTTP ${res1.status}`)
+      const data1 = await res1.json()
+      const text = data1.content?.find(b => b.type === 'text')?.text || ''
       const parsed = JSON.parse(text.replace(/```json|```/g, '').trim())
-
       setResult(parsed)
+
+      // PASO 2 — Fal.ai genera la imagen compuesta
+      setLoadStep('Generando la visualización con IA…')
+      const falPrompt = buildFalPrompt(sel, parsed)
+      const res2 = await fetch('/api/generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          imageBase64: img64,
+          imageType: imgFile?.type || 'image/jpeg',
+          prompt: falPrompt,
+        }),
+      })
+
+      if (res2.ok) {
+        const data2 = await res2.json()
+        if (data2.imageUrl) {
+          setGenImg(data2.imageUrl)
+          setShowGen(true)
+        }
+      } else {
+        // Si falla Fal.ai, continuamos igual con el análisis de Claude
+        console.warn('Fal.ai no disponible, mostrando análisis de texto')
+        setShowGen(false)
+      }
+
+      // PASO 3 — Guardar en Supabase
       await saveVisualization({ userId: user?.id, selectedProducts: sel, aiResult: parsed })
       if (!user) { await registerAnonUsage(); setAnonUsed(true) }
+
       setScreen(3)
     } catch (err) {
       console.error(err)
       setError('Hubo un problema al analizar. Verificá tu conexión e intentá de nuevo.')
     } finally {
       setLoading(false)
+      setLoadStep('')
     }
   }
 
@@ -206,8 +258,8 @@ export default function App() {
   }
 
   const reset = () => {
-    setScreen(1); setImgFile(null); setImgPrev(null)
-    setImg64(null); setSel([]); setResult(null); setError(null)
+    setScreen(1); setImgFile(null); setImgPrev(null); setImg64(null)
+    setSel([]); setResult(null); setGenImg(null); setError(null)
   }
 
   const waMsg = () => {
@@ -250,12 +302,12 @@ export default function App() {
           <div className={`sline ${screen >= 3 ? 'on' : ''}`} />
         </div>
 
-        {/* ── PANTALLA 1 ── */}
+        {/* ── PANTALLA 1: FOTO ── */}
         {screen === 1 && (
           <div className="screen">
             <div className="eye">Paso 1 de 3</div>
             <h1 className="h1">Mostranos tu<br /><em>espacio</em></h1>
-            <p className="sub">Sacale una foto a tu habitación o ambiente. La IA analizará colores y estilo para mostrarte cómo quedarían nuestros productos.</p>
+            <p className="sub">Sacale una foto a tu habitación o ambiente. La IA generará una visualización real con nuestros productos en tu espacio.</p>
 
             <div className={`uzone ${imgPrev ? 'has' : ''}`}>
               <input ref={fileRef} type="file" accept="image/*" onChange={handleImg} />
@@ -279,7 +331,7 @@ export default function App() {
 
             <div className="tip">
               <span className="tipico">💡</span>
-              <span className="tiptxt"><strong>Tip:</strong> Las fotos con buena luz natural dan mejores resultados.</span>
+              <span className="tiptxt"><strong>Tip:</strong> Las fotos con buena luz natural dan mejores resultados. Incluí la cama o el sillón donde irían los productos.</span>
             </div>
 
             {!user && (
@@ -293,12 +345,12 @@ export default function App() {
           </div>
         )}
 
-        {/* ── PANTALLA 2 ── */}
+        {/* ── PANTALLA 2: PRODUCTOS ── */}
         {screen === 2 && (
           <div className="screen">
             <div className="eye">Paso 2 de 3</div>
             <h1 className="h1">¿Qué querés <em>ver</em>?</h1>
-            <p className="sub">Elegí hasta 4 productos. La IA los combinará con tu espacio.</p>
+            <p className="sub">Elegí hasta 4 productos. La IA los integrará en tu foto.</p>
 
             {sel.length > 0 && (
               <div className="selbar">
@@ -342,34 +394,64 @@ export default function App() {
             {error && <div className="err">⚠️ {error}</div>}
 
             <button className="btn" disabled={sel.length === 0 || loading} onClick={analyze}>
-              {loading ? 'Analizando...' : 'Visualizar en mi espacio →'}
+              {loading ? 'Procesando...' : 'Generar visualización →'}
             </button>
           </div>
         )}
 
         {/* ── LOADING ── */}
         {loading && (
-          <div className="screen">
+          <div className="screen" style={{padding:0}}>
             <div className="loading">
               <div className="spin" />
-              <div className="ltxt">Analizando tu espacio…</div>
-              <div className="lsub">La IA está combinando colores y texturas</div>
+              <div className="ltxt">{loadStep || 'Procesando…'}</div>
+              <div className="lsub">
+                {loadStep.includes('Generando')
+                  ? 'Esto puede tardar hasta 20 segundos'
+                  : 'Analizando colores, estilo y luz'
+                }
+              </div>
+              <div className="lprog"><div className="lprogbar" /></div>
             </div>
           </div>
         )}
 
-        {/* ── PANTALLA 3 ── */}
+        {/* ── PANTALLA 3: RESULTADO ── */}
         {screen === 3 && result && !loading && (
           <div className="screen">
             <div className="eye">Tu visualización</div>
             <h1 className="h1">Así <em>quedaría</em></h1>
 
-            <div className="riwrap">
-              <img src={imgPrev} className="rimg" alt="Tu espacio" />
-              <div className="rbadge">✦ {result.style}</div>
-            </div>
+            {/* Toggle original / generada */}
+            {genImg && (
+              <div className="toggle-row">
+                <button className={`tglbtn ${showGen ? 'on' : ''}`} onClick={() => setShowGen(true)}>
+                  ✦ Con productos
+                </button>
+                <button className={`tglbtn ${!showGen ? 'on' : ''}`} onClick={() => setShowGen(false)}>
+                  Tu foto original
+                </button>
+              </div>
+            )}
 
-            <div className="chips">
+            {/* Imagen generada por Fal.ai */}
+            {genImg && showGen && (
+              <div className="genimg-wrap">
+                <img src={genImg} className="genimg" alt="Tu espacio con productos" />
+                <div className="genbadge">✦ {result.style}</div>
+                <div className="aibadge">Generado con IA</div>
+              </div>
+            )}
+
+            {/* Foto original (si no hay generada o toggle) */}
+            {(!genImg || !showGen) && (
+              <div className="riwrap">
+                <img src={imgPrev} className="rimg" style={{height:'auto',maxHeight:280}} alt="Tu espacio" />
+                <div className="rbadge">📷 Foto original</div>
+              </div>
+            )}
+
+            <div className="chips" style={{marginTop:12}}>
               {sel.map(p => <span key={p.id} className="chip">{p.emoji} {p.name}</span>)}
             </div>
 
@@ -422,7 +504,7 @@ export default function App() {
           </div>
         )}
 
-        {/* ── MODAL ── */}
+        {/* ── MODAL LOGIN ── */}
         {modal && (
           <div className="moverlay" onClick={e => e.target === e.currentTarget && setModal(false)}>
             <div className="modal">
