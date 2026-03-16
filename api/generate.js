@@ -14,42 +14,55 @@ export default async function handler(req, res) {
   try {
     const roomDataUrl = `data:${imageType || 'image/jpeg'};base64,${imageBase64}`
 
-    let prompt
+    let falEndpoint
     let requestBody
+    let prompt
 
     if (productImageUrl) {
-      // ── Con imagen real del producto ─────────────────────────
-      // Flux Kontext acepta una sola imagen de referencia.
-      // Estrategia: mandamos la foto del PRODUCTO como imagen base
-      // y le pedimos que la coloque en la habitación descripta.
-      // Alternativamente, hacemos dos llamadas encadenadas.
-
-      // Fetch de la imagen del producto para convertirla a base64
-      let productBase64 = null
-      let productMime = 'image/png'
+      // ── Multi-image: habitación + foto real del producto ─────
+      // Descargamos la imagen del producto para convertirla a base64
+      let productDataUrl = null
       try {
         const productRes = await fetch(productImageUrl)
         if (productRes.ok) {
-          const arrayBuf = await productRes.arrayBuffer()
-          const buffer = Buffer.from(arrayBuf)
-          productBase64 = buffer.toString('base64')
-          productMime = productRes.headers.get('content-type') || 'image/png'
+          const buf = Buffer.from(await productRes.arrayBuffer())
+          const mime = productRes.headers.get('content-type') || 'image/png'
+          productDataUrl = `data:${mime};base64,${buf.toString('base64')}`
         }
       } catch (e) {
         console.warn('No se pudo cargar la imagen del producto:', e.message)
       }
 
-      if (productBase64) {
-        // Llamada 1: usar foto del producto como referencia + prompt descriptivo
-        prompt = `This is a product photo of "${productName}". 
-Now place this exact textile product onto a bed in a bedroom with this style: ${style || 'elegant modern'}.
-The bedroom has the following characteristics based on the customer's room photo.
-Keep all the product details: colors, patterns, textures, lace borders exactly as shown.
-The result should look like a professional lifestyle photo of the product in a real bedroom.
-Photorealistic, natural lighting, high quality interior photography.`
+      if (productDataUrl) {
+        // Usamos el endpoint multi-image de Kontext Max
+        falEndpoint = 'https://fal.run/fal-ai/flux-pro/kontext/max/multi'
+        prompt = `Image 1 is a bedroom. Image 2 is a product photo of a "${productName}" bedspread/quilt.
+
+Task: Place the EXACT bedspread from Image 2 onto the bed in Image 1.
+
+Critical requirements:
+- Preserve ALL visual details of the bedspread: exact colors, patterns, lace borders, quilted texture, geometric designs
+- Keep the bedroom in Image 1 COMPLETELY UNCHANGED: same walls, furniture, lamps, headboard, pillows
+- The bedspread should drape naturally over the bed with realistic folds and shadows
+- Match the lighting of the room onto the bedspread surface
+- The result must look like a real professional interior design photo
+- Style: ${style || 'elegant modern'}`
 
         requestBody = {
-          image_url: `data:${productMime};base64,${productBase64}`,
+          image_url: [roomDataUrl, productDataUrl],  // array de imágenes
+          prompt,
+          num_inference_steps: 50,
+          guidance_scale: 6,
+          num_images: 1,
+          output_format: 'jpeg',
+          safety_tolerance: '2',
+        }
+      } else {
+        // Fallback: solo la habitación con prompt descriptivo
+        falEndpoint = 'https://fal.run/fal-ai/flux-pro/kontext'
+        prompt = `Professional interior photo. Keep this bedroom EXACTLY the same. Only change the bedding: place a ${productName} bedspread on the bed. Style: ${style || 'elegant modern'}. Photorealistic.`
+        requestBody = {
+          image_url: roomDataUrl,
           prompt,
           num_inference_steps: 40,
           guidance_scale: 5,
@@ -57,34 +70,26 @@ Photorealistic, natural lighting, high quality interior photography.`
           output_format: 'jpeg',
           safety_tolerance: '2',
         }
-      } else {
-        // Fallback si no se pudo cargar el producto
-        prompt = `Professional interior design photo. Place a ${productName} (${style || 'elegant'} style home textile) naturally on the bed. Keep the room exactly the same. Photorealistic.`
-        requestBody = {
-          image_url: roomDataUrl,
-          prompt,
-          num_inference_steps: 35,
-          guidance_scale: 4,
-          num_images: 1,
-          output_format: 'jpeg',
-          safety_tolerance: '2',
-        }
       }
     } else {
-      // ── Sin imagen de producto, solo texto ───────────────────
-      prompt = `Professional interior design photo. Place a ${productName} home textile product naturally on the bed in this room. Keep the room architecture exactly the same. Style: ${style || 'elegant modern'}. Photorealistic, natural lighting.`
+      // Sin imagen de producto
+      falEndpoint = 'https://fal.run/fal-ai/flux-pro/kontext'
+      prompt = `Professional interior photo. Keep this bedroom EXACTLY the same. Only add a ${productName} on the bed. Style: ${style || 'elegant modern'}. Photorealistic, natural lighting.`
       requestBody = {
         image_url: roomDataUrl,
         prompt,
-        num_inference_steps: 35,
-        guidance_scale: 4,
+        num_inference_steps: 40,
+        guidance_scale: 5,
         num_images: 1,
         output_format: 'jpeg',
         safety_tolerance: '2',
       }
     }
 
-    const response = await fetch('https://fal.run/fal-ai/flux-pro/kontext', {
+    console.log('Llamando a:', falEndpoint)
+    console.log('Con', Array.isArray(requestBody.image_url) ? requestBody.image_url.length : 1, 'imagen(es)')
+
+    const response = await fetch(falEndpoint, {
       method: 'POST',
       headers: {
         'Authorization': `Key ${process.env.FAL_KEY}`,
@@ -96,7 +101,7 @@ Photorealistic, natural lighting, high quality interior photography.`
     if (!response.ok) {
       const errText = await response.text()
       console.error('Fal.ai error:', response.status, errText)
-      res.status(500).json({ error: 'Error generando la imagen' })
+      res.status(500).json({ error: `Error Fal.ai: ${response.status}` })
       return
     }
 
@@ -104,6 +109,7 @@ Photorealistic, natural lighting, high quality interior photography.`
     const imageUrl = data.images?.[0]?.url
 
     if (!imageUrl) {
+      console.error('Respuesta de Fal.ai sin imagen:', JSON.stringify(data))
       res.status(500).json({ error: 'No se recibió imagen de Fal.ai' })
       return
     }
