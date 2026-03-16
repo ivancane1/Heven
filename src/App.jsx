@@ -115,12 +115,6 @@ const CSS = `
   .ubox{text-align:center;margin-top:16px;padding:14px 16px;background:var(--linen);border-radius:12px}
 `
 
-function buildFalPrompt(selectedProducts, aiResult) {
-  const productNames = selectedProducts.map(p => p.tags).join(', ')
-  const style = aiResult?.style || 'moderno y cálido'
-  return `Interior design photo. Add these home textile products naturally placed in the scene: ${productNames}. Style: ${style}. Keep the room architecture exactly the same, only add the textiles. Photorealistic, professional interior photography, natural lighting.`
-}
-
 export default function App() {
   const [screen, setScreen]     = useState(1)
   const [imgFile, setImgFile]   = useState(null)
@@ -193,42 +187,41 @@ export default function App() {
       })
 
       const data1 = await res1.json()
-
-      if (!res1.ok || data1.error) {
-        throw new Error(data1.error || `Error del servidor: ${res1.status}`)
-      }
-
-      const parsed = data1.result  // ya viene parseado del servidor
+      if (!res1.ok || data1.error) throw new Error(data1.error || `Error del servidor: ${res1.status}`)
+      const parsed = data1.result
       setResult(parsed)
 
-      // PASO 2 — Fal.ai genera la imagen
+      // PASO 2 — Fal.ai con las DOS imágenes: espacio + foto real del producto
       setLoadStep('Generando la visualización con IA…')
-      const falPrompt = buildFalPrompt(sel, parsed)
+
+      // Tomar el primer producto con imagen real
+      const productWithImage = sel.find(p => p.image)
+      const productImageUrl = productWithImage
+        ? `${window.location.origin}${productWithImage.image}`
+        : null
+
       const res2 = await fetch('/api/generate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           imageBase64: img64,
           imageType: imgFile?.type || 'image/jpeg',
-          prompt: falPrompt,
+          productImageUrl,
+          productName: sel.map(p => p.name).join(', '),
+          style: parsed.style,
         }),
       })
 
       if (res2.ok) {
         const data2 = await res2.json()
-        if (data2.imageUrl) {
-          setGenImg(data2.imageUrl)
-          setShowGen(true)
-        }
+        if (data2.imageUrl) { setGenImg(data2.imageUrl); setShowGen(true) }
       } else {
-        console.warn('Fal.ai falló, mostrando solo análisis de texto')
+        console.warn('Fal.ai falló')
         setShowGen(false)
       }
 
-      // PASO 3 — Guardar
       await saveVisualization({ userId: user?.id, selectedProducts: sel, aiResult: parsed })
       if (!user) { await registerAnonUsage(); setAnonUsed(true) }
-
       setScreen(3)
     } catch (err) {
       console.error(err)
