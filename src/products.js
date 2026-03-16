@@ -14,14 +14,14 @@ export const PRODUCTS = {
   Cubrecamas: [
     {
       id: 1,
-      name: 'Mi Cubrecama 1',       // ← cambiá por el nombre real
-      detail: 'Algodón · 2 plazas', // ← material y medida
-      image: '/products/cubrecamas/cubrecama.png', // ← reemplazá con tu foto real, ej: '/products/cubrecamas/provence.png'
-      emoji: '🛏️',                  // ← se usa si no hay imagen
-      colors: ['#E8C4B8', '#D4956A', '#F5EDE8'],
-      tags: 'cubrecama de algodón en tono natural, textura suave, estilo moderno', // ← describí el producto para la IA
+      name: 'Gris Encaje',
+      detail: 'Quilt · 2.5 plazas',
+      image: '/products/cubrecamas/cubrecama.png',
+      emoji: '🛏️',
+      colors: ['#6B7280', '#9CA3AF', '#F9FAFB'],
+      tags: 'cubrecama quilt gris oscuro con bordado de encaje blanco en franjas verticales, acolchado con textura geométrica, incluye almohadones a juego, estilo clásico elegante',
     },
-    // Copiá y pegá el bloque de arriba para agregar más cubrecamas
+    // Agregá más cubrecamas acá copiando el bloque de arriba
   ],
 
   Almohadones: [
