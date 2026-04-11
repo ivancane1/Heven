@@ -110,9 +110,24 @@ export default function AdminPanel({ onBack }) {
     const file = e.target.files?.[0]
     if (!file) return
     setImgFile(file)
-    const r = new FileReader()
-    r.onload = ev => setImgPrev(ev.target.result)
-    r.readAsDataURL(file)
+    // Redimensionar a max 1024px para no superar límite de Vercel (4.5MB)
+    const img = new Image()
+    const url = URL.createObjectURL(file)
+    img.onload = () => {
+      const MAX = 1024
+      let w = img.width, h = img.height
+      if (w > MAX || h > MAX) {
+        if (w > h) { h = Math.round(h * MAX / w); w = MAX }
+        else { w = Math.round(w * MAX / h); h = MAX }
+      }
+      const canvas = document.createElement('canvas')
+      canvas.width = w; canvas.height = h
+      canvas.getContext('2d').drawImage(img, 0, 0, w, h)
+      const dataUrl = canvas.toDataURL('image/jpeg', 0.85)
+      setImgPrev(dataUrl)
+      URL.revokeObjectURL(url)
+    }
+    img.src = url
   }
 
   async function analyzeImage() {
