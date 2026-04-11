@@ -1,3 +1,4 @@
+import AdminPanel from './AdminPanel.jsx'
 import { useState, useRef, useCallback, useEffect } from 'react'
 import { PRODUCTS, CATEGORIES } from './products.js'
 import {
@@ -135,6 +136,9 @@ export default function App() {
   const [email, setEmail]       = useState('')
   const [sending, setSending]   = useState(false)
   const fileRef = useRef()
+  const [adminMode, setAdminMode] = useState(false)
+  const [dbProducts, setDbProducts] = useState([])
+  const allProducts = dbProducts.length > 0 ? dbProducts : PRODUCTS
 
   useEffect(() => {
     getCurrentUser().then(u => setUser(u))
@@ -142,7 +146,11 @@ export default function App() {
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_e, session) => {
       setUser(session?.user ?? null)
     })
-    return () => subscription.unsubscribe()
+    // Cargar productos desde Supabase
+      supabase.from('products').select('*').eq('active', true).order('created_at').then(({ data }) => {
+        if (data && data.length > 0) setDbProducts(data)
+      })
+      return () => subscription.unsubscribe()
   }, [])
 
   const handleImg = useCallback((e) => {
@@ -208,7 +216,6 @@ export default function App() {
           imageType: imgFile?.type || 'image/jpeg',
           productImageUrl,
           productName: sel.map(p => p.name).join(', '),
-          productDescription: sel.map(p => p.tags || p.name).join('. '),
           style: parsed.style,
         }),
       })
@@ -250,6 +257,8 @@ export default function App() {
     const list = sel.map(p => `- ${p.name} (${p.detail})`).join('\n')
     return encodeURIComponent(`Hola! Usé el visualizador y me interesa:\n\n${list}\n\n¿Me podés dar más info?`)
   }
+
+  if (adminMode) return <AdminPanel onBack={() => setAdminMode(false)} />
 
   return (
     <>
@@ -351,13 +360,14 @@ export default function App() {
             </div>
 
             <div className="grid">
-              {PRODUCTS[cat].map(p => {
+              {allProducts.filter(p => p.category === cat || cat === 'all').map(p => {
                 const isSel = sel.find(x => x.id === p.id)
+                const pImage = p.image || p.image_url
                 return (
                   <div key={p.id} className={`card ${isSel ? 'sel' : ''}`} onClick={() => toggle(p)}>
-                    <div className="swatch" style={!p.image ? {background:`linear-gradient(135deg,${p.colors[2]}88,${p.colors[0]}cc)`} : {}}>
-                      {p.image
-                        ? <img src={p.image} className="pimg" alt={p.name} onError={e => { e.target.style.display='none' }} />
+                    <div className="swatch" style={!pImage ? {background:`linear-gradient(135deg,${(p.colors||[])[2]||'#EDE6D6'}88,${(p.colors||[])[0]||'#B5603A'}cc)`} : {}}>
+                      {pImage
+                        ? <img src={pImage} className="pimg" alt={p.name} onError={e => { e.target.style.display='none' }} />
                         : <span>{p.emoji}</span>
                       }
                       <div className="check">✓</div>
