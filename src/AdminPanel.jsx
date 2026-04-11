@@ -228,6 +228,18 @@ export default function AdminPanel({ onBack }) {
     loadCategories()
   }
 
+  const [loginEmail, setLoginEmail] = useState('')
+  const [loginSent, setLoginSent] = useState(false)
+  const [loginLoading, setLoginLoading] = useState(false)
+
+  async function sendAdminLink() {
+    if (!loginEmail) return
+    setLoginLoading(true)
+    const { error } = await supabase.auth.signInWithOtp({ email: loginEmail })
+    setLoginLoading(false)
+    if (!error) setLoginSent(true)
+  }
+
   if (authChecked && !session) return (
     <>
       <style>{A}</style>
@@ -236,11 +248,32 @@ export default function AdminPanel({ onBack }) {
           <span className="adm-title">Admin · Heven</span>
           <button className="adm-back" onClick={onBack}>← Salir</button>
         </div>
-        <div className="adm-body" style={{textAlign:'center',paddingTop:60}}>
-          <div style={{fontSize:32,marginBottom:16}}>🔒</div>
-          <div style={{fontFamily:"'Cormorant Garamond',serif",fontSize:22,color:'#2C2C2C',marginBottom:8}}>Acceso restringido</div>
-          <div style={{fontSize:13,color:'#9E9589',marginBottom:24}}>Tenés que iniciar sesión para acceder al admin</div>
-          <button className="adm-btn" onClick={onBack}>← Volver a la app</button>
+        <div className="adm-body" style={{paddingTop:48}}>
+          <div style={{textAlign:'center',marginBottom:32}}>
+            <div style={{fontSize:32,marginBottom:12}}>🔒</div>
+            <div style={{fontFamily:"'Cormorant Garamond',serif",fontSize:24,color:'#2C2C2C',marginBottom:6}}>Acceso admin</div>
+            <div style={{fontSize:13,color:'#9E9589'}}>Ingresá tu email para recibir el link de acceso</div>
+          </div>
+          {loginSent ? (
+            <div className="adm-msg ok" style={{textAlign:'center',padding:20}}>
+              Link enviado a {loginEmail}. Revisá tu email y hacé click en el link — esta página se va a actualizar automáticamente.
+            </div>
+          ) : (
+            <>
+              <div className="adm-lbl">Email</div>
+              <input
+                className="adm-input"
+                type="email"
+                placeholder="tu@email.com"
+                value={loginEmail}
+                onChange={e => setLoginEmail(e.target.value)}
+                onKeyDown={e => e.key === 'Enter' && sendAdminLink()}
+              />
+              <button className="adm-btn" onClick={sendAdminLink} disabled={loginLoading || !loginEmail}>
+                {loginLoading ? 'Enviando...' : 'Enviar magic link'}
+              </button>
+            </>
+          )}
         </div>
       </div>
     </>
