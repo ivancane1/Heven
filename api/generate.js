@@ -11,17 +11,55 @@ export default async function handler(req, res) {
     return
   }
 
+  const REPLICATE_TOKEN = process.env.REPLICATE_API_TOKEN
+  if (!REPLICATE_TOKEN) {
+    res.status(500).json({ error: 'REPLICATE_API_TOKEN no configurado' })
+    return
+  }
+
+  // Helper: llamar a Replicate y esperar resultado (polling)
+  async function runReplicate(modelVersion, input, timeoutMs = 120000) {
+    const createRes = await fetch('https://api.replicate.com/v1/predictions', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Token ${REPLICATE_TOKEN}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ version: modelVersion, input }),
+    })
+
+    if (!createRes.ok) {
+      const err = await createRes.text()
+      throw new Error(`Replicate create error ${createRes.status}: ${err}`)
+    }
+
+    const prediction = await createRes.json()
+    const pollUrl = prediction.urls?.get
+    if (!pollUrl) throw new Error('No poll URL en respuesta de Replicate')
+
+    const deadline = Date.now() + timeoutMs
+    while (Date.now() < deadline) {
+      await new Promise(r => setTimeout(r, 2500))
+
+      const pollRes = await fetch(pollUrl, {
+        headers: { 'Authorization': `Token ${REPLICATE_TOKEN}` },
+      })
+      const result = await pollRes.json()
+
+      if (result.status === 'succeeded') return result.output
+      if (result.status === 'failed' || result.status === 'canceled') {
+        throw new Error(`Replicate prediction ${result.status}: ${result.error || 'unknown'}`)
+      }
+    }
+    throw new Error('Timeout esperando resultado de Replicate')
+  }
+
   try {
     const roomDataUrl = `data:${imageType || 'image/jpeg'};base64,${imageBase64}`
 
-    let falEndpoint
-    let requestBody
-    let prompt
-
+    // Convertir imagen del producto a base64 si existe
+    let productDataUrl = null
     if (productImageUrl) {
-      // ── Multi-image: habitación + foto real del producto ─────
-      // Descargamos la imagen del producto para convertirla a base64
-      let productDataUrl = null
       try {
         const productRes = await fetch(productImageUrl)
         if (productRes.ok) {
@@ -30,93 +68,82 @@ export default async function handler(req, res) {
           productDataUrl = `data:${mime};base64,${buf.toString('base64')}`
         }
       } catch (e) {
-        console.warn('No se pudo cargar la imagen del producto:', e.message)
-      }
-
-      if (productDataUrl) {
-        // Usamos el endpoint multi-image de Kontext Max
-        falEndpoint = 'https://fal.run/fal-ai/flux-pro/kontext/max/multi'
-        prompt = `Image 1 is a bedroom. Image 2 is a product photo of a "${productName}" bedspread/quilt.
-
-Task: Place the EXACT bedspread from Image 2 onto the bed in Image 1.
-
-Critical requirements:
-- Preserve ALL visual details of the bedspread: exact colors, patterns, lace borders, quilted texture, geometric designs
-- Keep the bedroom in Image 1 COMPLETELY UNCHANGED: same walls, furniture, lamps, headboard, pillows
-- The bedspread should drape naturally over the bed with realistic folds and shadows
-- Match the lighting of the room onto the bedspread surface
-- The result must look like a real professional interior design photo
-- Style: ${style || 'elegant modern'}`
-
-        requestBody = {
-          image_url: [roomDataUrl, productDataUrl],  // array de imágenes
-          prompt,
-          num_inference_steps: 50,
-          guidance_scale: 6,
-          num_images: 1,
-          output_format: 'jpeg',
-          safety_tolerance: '2',
-        }
-      } else {
-        // Fallback: solo la habitación con prompt descriptivo
-        falEndpoint = 'https://fal.run/fal-ai/flux-pro/kontext'
-        prompt = `Professional interior photo. Keep this bedroom EXACTLY the same. Only change the bedding: place a ${productName} bedspread on the bed. Style: ${style || 'elegant modern'}. Photorealistic.`
-        requestBody = {
-          image_url: roomDataUrl,
-          prompt,
-          num_inference_steps: 40,
-          guidance_scale: 5,
-          num_images: 1,
-          output_format: 'jpeg',
-          safety_tolerance: '2',
-        }
-      }
-    } else {
-      // Sin imagen de producto
-      falEndpoint = 'https://fal.run/fal-ai/flux-pro/kontext'
-      prompt = `Professional interior photo. Keep this bedroom EXACTLY the same. Only add a ${productName} on the bed. Style: ${style || 'elegant modern'}. Photorealistic, natural lighting.`
-      requestBody = {
-        image_url: roomDataUrl,
-        prompt,
-        num_inference_steps: 40,
-        guidance_scale: 5,
-        num_images: 1,
-        output_format: 'jpeg',
-        safety_tolerance: '2',
+        console.warn('No se pudo cargar imagen del producto:', e.message)
       }
     }
 
-    console.log('Llamando a:', falEndpoint)
-    console.log('Con', Array.isArray(requestBody.image_url) ? requestBody.image_url.length : 1, 'imagen(es)')
+    // PASO 1: Grounded SAM — generar máscara de la cama
+    let maskUrl = null
+    try {
+      console.log('Paso 1: Generando máscara con Grounded SAM...')
+      const samOutput = await runReplicate(
+        'schananas/grounded_sam:7a08e58ca8be9f0fcf09a21c0280d85d1f5ad87b56df1f22e42f9d80f41e8c12',
+        {
+          image: roomDataUrl,
+          prompt: 'bed, mattress, bedspread, quilt, blanket, duvet, comforter',
+          box_threshold: 0.3,
+          text_threshold: 0.25,
+        },
+        60000
+      )
 
-    const response = await fetch(falEndpoint, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Key ${process.env.FAL_KEY}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(requestBody),
-    })
-
-    if (!response.ok) {
-      const errText = await response.text()
-      console.error('Fal.ai error:', response.status, errText)
-      res.status(500).json({ error: `Error Fal.ai: ${response.status}` })
-      return
+      if (Array.isArray(samOutput)) {
+        maskUrl = samOutput.find(u => typeof u === 'string' && u.includes('mask')) || samOutput[1] || samOutput[0]
+      } else if (typeof samOutput === 'string') {
+        maskUrl = samOutput
+      }
+      console.log('Máscara generada:', maskUrl)
+    } catch (samErr) {
+      console.warn('SAM falló, continuando sin máscara:', samErr.message)
     }
 
-    const data = await response.json()
-    const imageUrl = data.images?.[0]?.url
+    // PASO 2: Ideogram v3 — inpainting con referencia
+    console.log('Paso 2: Generando imagen con Ideogram v3...')
+
+    const ideogramInput = {
+      image: roomDataUrl,
+      prompt: `Replace the bedding on the bed with a "${productName}" bedspread/quilt. Keep the entire room EXACTLY the same: walls, furniture, headboard, lamps, all objects unchanged. The new bedspread should look photorealistic with natural folds and room lighting. Style: ${style || 'elegant modern interior photography'}.`,
+      style: 'REALISTIC',
+      resolution: 'RESOLUTION_1024_1024',
+      rendering_speed: 'BALANCED',
+      magic_prompt_option: 'OFF',
+    }
+
+    if (maskUrl) {
+      ideogramInput.mask = maskUrl
+    }
+
+    if (productDataUrl) {
+      ideogramInput.style_reference_images = [productDataUrl]
+      ideogramInput.style_reference_strength = 0.8
+    }
+
+    const ideogramOutput = await runReplicate(
+      'ideogram-ai/ideogram-v3-balanced:2bab9b3c0de0a8d3e8a3b8f88c0d2e5f1a4c7d9e2b5a8f1c4d7e0a3b6c9f2e5',
+      ideogramInput,
+      120000
+    )
+
+    let imageUrl = null
+    if (Array.isArray(ideogramOutput)) {
+      imageUrl = ideogramOutput[0]
+    } else if (typeof ideogramOutput === 'string') {
+      imageUrl = ideogramOutput
+    } else if (ideogramOutput?.url) {
+      imageUrl = ideogramOutput.url
+    }
 
     if (!imageUrl) {
-      console.error('Respuesta de Fal.ai sin imagen:', JSON.stringify(data))
-      res.status(500).json({ error: 'No se recibió imagen de Fal.ai' })
+      console.error('Respuesta de Ideogram sin imagen:', JSON.stringify(ideogramOutput))
+      res.status(500).json({ error: 'No se recibió imagen de Ideogram' })
       return
     }
 
+    console.log('Imagen generada exitosamente:', imageUrl)
     res.status(200).json({ imageUrl })
+
   } catch (err) {
     console.error('Error en /api/generate:', err)
-    res.status(500).json({ error: 'Error interno del servidor' })
+    res.status(500).json({ error: err.message || 'Error interno del servidor' })
   }
 }
