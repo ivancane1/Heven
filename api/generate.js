@@ -42,9 +42,9 @@ export default async function handler(req, res) {
       image: roomDataUrl,
       prompt: `Replace ONLY the bedding/bedspread on the bed with a "${productName}" quilt. Keep the entire room EXACTLY the same: same walls, furniture, headboard, lamps, pillows, floor — nothing else changes. The new bedspread must look photorealistic with natural folds and shadows matching the room lighting. Style: ${style || 'elegant modern interior photography'}.`,
       style: 'REALISTIC',
-      resolution: 'RESOLUTION_1024_1024',
+      resolution: '1024x1024',
       rendering_speed: 'BALANCED',
-      magic_prompt_option: 'OFF',
+      magic_prompt_option: 'Off',
     }
 
     if (productDataUrl) {
