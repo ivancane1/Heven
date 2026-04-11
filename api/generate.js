@@ -17,10 +17,78 @@ export default async function handler(req, res) {
     return
   }
 
+  const sleep = (ms) => new Promise(r => setTimeout(r, ms))
+
+  // Helper: polling de una predicción
+  async function pollPrediction(pollUrl, timeoutMs = 120000) {
+    const deadline = Date.now() + timeoutMs
+    while (Date.now() < deadline) {
+      await sleep(3000)
+      const pollRes = await fetch(pollUrl, {
+        headers: { 'Authorization': `Token ${REPLICATE_TOKEN}` },
+      })
+      const result = await pollRes.json()
+      if (result.status === 'succeeded') return result.output
+      if (result.status === 'failed' || result.status === 'canceled') {
+        throw new Error(`Prediction ${result.status}: ${result.error || 'unknown'}`)
+      }
+    }
+    throw new Error('Timeout esperando resultado')
+  }
+
+  // Helper: crear predicción con version hash
+  async function runVersion(versionHash, input, timeoutMs = 90000) {
+    const createRes = await fetch('https://api.replicate.com/v1/predictions', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Token ${REPLICATE_TOKEN}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ version: versionHash, input }),
+    })
+
+    if (!createRes.ok) {
+      const err = await createRes.text()
+      throw new Error(`Replicate error ${createRes.status}: ${err}`)
+    }
+
+    const prediction = await createRes.json()
+    if (prediction.status === 'succeeded') return prediction.output
+
+    const pollUrl = prediction.urls?.get
+    if (!pollUrl) throw new Error('No poll URL')
+    return pollPrediction(pollUrl, timeoutMs)
+  }
+
+  // Helper: crear predicción por nombre de modelo
+  async function runModel(owner, name, input, timeoutMs = 90000) {
+    const createRes = await fetch(`https://api.replicate.com/v1/models/${owner}/${name}/predictions`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Token ${REPLICATE_TOKEN}`,
+        'Content-Type': 'application/json',
+        'Prefer': 'wait=5',
+      },
+      body: JSON.stringify({ input }),
+    })
+
+    if (!createRes.ok) {
+      const err = await createRes.text()
+      throw new Error(`Replicate error ${createRes.status}: ${err}`)
+    }
+
+    const prediction = await createRes.json()
+    if (prediction.status === 'succeeded') return prediction.output
+
+    const pollUrl = prediction.urls?.get
+    if (!pollUrl) throw new Error('No poll URL')
+    return pollPrediction(pollUrl, timeoutMs)
+  }
+
   try {
     const roomDataUrl = `data:${imageType || 'image/jpeg'};base64,${imageBase64}`
 
-    // Convertir imagen del producto a base64 si existe
+    // Convertir imagen del producto a base64
     let productDataUrl = null
     if (productImageUrl) {
       try {
@@ -35,16 +103,59 @@ export default async function handler(req, res) {
       }
     }
 
-    // Ideogram v3 — edición directa por prompt (sin máscara)
-    console.log('Generando imagen con Ideogram v3...')
+    // ── PASO 1: SAM2 — generar máscara de la cama ─────────────
+    let maskUrl = null
+    try {
+      console.log('Paso 1: Generando máscara con SAM2...')
+      const samOutput = await runModel(
+        'meta', 'sam-2',
+        {
+          image: roomDataUrl,
+          point_coords: [[0.5, 0.6]],   // centro-inferior de la imagen (zona cama)
+          point_labels: [1],
+          use_m2m: true,
+        },
+        60000
+      )
+      if (Array.isArray(samOutput)) {
+        maskUrl = samOutput[0]
+      } else if (typeof samOutput === 'string') {
+        maskUrl = samOutput
+      }
+      console.log('Máscara generada:', maskUrl)
+    } catch (samErr) {
+      console.warn('SAM falló, continuando sin máscara:', samErr.message)
+    }
+
+    // ── ESPERA entre requests para respetar rate limit ────────
+    console.log('Esperando 12s entre requests...')
+    await sleep(12000)
+
+    // ── PASO 2: Ideogram v3 — inpainting ──────────────────────
+    console.log('Paso 2: Generando imagen con Ideogram v3...')
 
     const ideogramInput = {
       image: roomDataUrl,
-      prompt: `Replace ONLY the bedding/bedspread on the bed with a "${productName}" quilt. Keep the entire room EXACTLY the same: same walls, furniture, headboard, lamps, pillows, floor — nothing else changes. The new bedspread must look photorealistic with natural folds and shadows matching the room lighting. Style: ${style || 'elegant modern interior photography'}.`,
+      prompt: `Replace ONLY the bedding on the bed with a "${productName}" quilt/bedspread. Keep the entire room EXACTLY the same: same walls, furniture, headboard, lamps, pillows, floor. The new bedspread must look photorealistic with natural folds and shadows matching the room lighting. Style: ${style || 'elegant modern interior photography'}.`,
       style: 'REALISTIC',
       resolution: '1024x1024',
       rendering_speed: 'BALANCED',
       magic_prompt_option: 'Off',
+    }
+
+    if (maskUrl) {
+      ideogramInput.mask = maskUrl
+      console.log('Usando máscara de SAM')
+    } else {
+      // Sin máscara: Ideogram necesita mask obligatoriamente en modo edición
+      // Usamos una máscara sintética que cubre la mitad inferior (zona cama)
+      // Generada como data URL de imagen blanca/negra en base64
+      const maskBase64 =
+        'iVBORw0KGgoAAAANSUhEUgAABAAAAAQACAIAAADwf7zTAAAAMklEQVR4nO3BMQEAAADCoPVP' +
+        '7WsIoAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAeAMBxAABIABnAAAAAElFTkSuQmCC'
+      // Fallback: máscara sólida blanca (edita toda la imagen con foco en prompt)
+      ideogramInput.mask = `data:image/png;base64,${maskBase64}`
+      console.log('Usando máscara fallback (toda la imagen)')
     }
 
     if (productDataUrl) {
@@ -52,59 +163,25 @@ export default async function handler(req, res) {
       ideogramInput.style_reference_strength = 0.8
     }
 
-    // Crear predicción
-    const createRes = await fetch('https://api.replicate.com/v1/models/ideogram-ai/ideogram-v3-balanced/predictions', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Token ${REPLICATE_TOKEN}`,
-        'Content-Type': 'application/json',
-        'Prefer': 'wait=5',
-      },
-      body: JSON.stringify({ input: ideogramInput }),
-    })
+    const ideogramOutput = await runModel('ideogram-ai', 'ideogram-v3-balanced', ideogramInput, 120000)
 
-    if (!createRes.ok) {
-      const errText = await createRes.text()
-      console.error('Ideogram error:', createRes.status, errText)
-      res.status(500).json({ error: `Ideogram error ${createRes.status}: ${errText}` })
+    let imageUrl = null
+    if (Array.isArray(ideogramOutput)) {
+      imageUrl = ideogramOutput[0]
+    } else if (typeof ideogramOutput === 'string') {
+      imageUrl = ideogramOutput
+    } else if (ideogramOutput?.url) {
+      imageUrl = ideogramOutput.url
+    }
+
+    if (!imageUrl) {
+      console.error('Sin imagen en respuesta:', JSON.stringify(ideogramOutput))
+      res.status(500).json({ error: 'No se recibió imagen de Ideogram' })
       return
     }
 
-    const prediction = await createRes.json()
-    if (prediction.status === 'succeeded') {
-      const imageUrl = Array.isArray(prediction.output) ? prediction.output[0] : prediction.output
-      return res.status(200).json({ imageUrl })
-    }
-
-    // Polling
-    const pollUrl = prediction.urls?.get
-    if (!pollUrl) {
-      res.status(500).json({ error: 'No poll URL en respuesta de Replicate' })
-      return
-    }
-
-    const deadline = Date.now() + 120000
-    while (Date.now() < deadline) {
-      await new Promise(r => setTimeout(r, 3000))
-
-      const pollRes = await fetch(pollUrl, {
-        headers: { 'Authorization': `Token ${REPLICATE_TOKEN}` },
-      })
-      const result = await pollRes.json()
-
-      if (result.status === 'succeeded') {
-        const imageUrl = Array.isArray(result.output) ? result.output[0] : result.output
-        console.log('Imagen generada:', imageUrl)
-        return res.status(200).json({ imageUrl })
-      }
-
-      if (result.status === 'failed' || result.status === 'canceled') {
-        console.error('Ideogram falló:', result.error)
-        return res.status(500).json({ error: `Ideogram falló: ${result.error || 'unknown'}` })
-      }
-    }
-
-    res.status(500).json({ error: 'Timeout esperando resultado de Ideogram' })
+    console.log('Imagen generada:', imageUrl)
+    res.status(200).json({ imageUrl })
 
   } catch (err) {
     console.error('Error en /api/generate:', err)
