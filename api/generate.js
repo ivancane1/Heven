@@ -1,3 +1,51 @@
+import zlib from 'zlib'
+
+// Genera un PNG de máscara: negro arriba, blanco abajo (zona cama)
+function createBedMask(width, height, bedStartFraction = 0.40) {
+  const crcTable = new Uint32Array(256)
+  for (let i = 0; i < 256; i++) {
+    let c = i
+    for (let j = 0; j < 8; j++) c = (c & 1) ? 0xEDB88320 ^ (c >>> 1) : c >>> 1
+    crcTable[i] = c
+  }
+  function crc32(buf) {
+    let crc = 0xFFFFFFFF
+    for (const b of buf) crc = crcTable[(crc ^ b) & 0xFF] ^ (crc >>> 8)
+    return (crc ^ 0xFFFFFFFF) >>> 0
+  }
+  function chunk(type, data) {
+    const lenBuf = Buffer.alloc(4); lenBuf.writeUInt32BE(data.length)
+    const typeBuf = Buffer.from(type, 'ascii')
+    const crcVal = crc32(Buffer.concat([typeBuf, data]))
+    const crcBuf = Buffer.alloc(4); crcBuf.writeUInt32BE(crcVal)
+    return Buffer.concat([lenBuf, typeBuf, data, crcBuf])
+  }
+
+  const PNG_SIG = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10])
+
+  const ihdr = Buffer.alloc(13)
+  ihdr.writeUInt32BE(width, 0)
+  ihdr.writeUInt32BE(height, 4)
+  ihdr[8] = 8; ihdr[9] = 0 // 8-bit grayscale
+
+  const bedStartRow = Math.floor(height * bedStartFraction)
+  const rawRows = []
+  for (let y = 0; y < height; y++) {
+    const row = Buffer.alloc(width + 1)
+    row[0] = 0 // filter: None
+    row.fill(y >= bedStartRow ? 255 : 0, 1)
+    rawRows.push(row)
+  }
+  const compressed = zlib.deflateSync(Buffer.concat(rawRows))
+
+  return Buffer.concat([
+    PNG_SIG,
+    chunk('IHDR', ihdr),
+    chunk('IDAT', compressed),
+    chunk('IEND', Buffer.alloc(0)),
+  ])
+}
+
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
     res.status(405).end('Method Not Allowed')
@@ -15,74 +63,6 @@ export default async function handler(req, res) {
   if (!REPLICATE_TOKEN) {
     res.status(500).json({ error: 'REPLICATE_API_TOKEN no configurado' })
     return
-  }
-
-  const sleep = (ms) => new Promise(r => setTimeout(r, ms))
-
-  // Helper: polling de una predicción
-  async function pollPrediction(pollUrl, timeoutMs = 120000) {
-    const deadline = Date.now() + timeoutMs
-    while (Date.now() < deadline) {
-      await sleep(3000)
-      const pollRes = await fetch(pollUrl, {
-        headers: { 'Authorization': `Token ${REPLICATE_TOKEN}` },
-      })
-      const result = await pollRes.json()
-      if (result.status === 'succeeded') return result.output
-      if (result.status === 'failed' || result.status === 'canceled') {
-        throw new Error(`Prediction ${result.status}: ${result.error || 'unknown'}`)
-      }
-    }
-    throw new Error('Timeout esperando resultado')
-  }
-
-  // Helper: crear predicción con version hash
-  async function runVersion(versionHash, input, timeoutMs = 90000) {
-    const createRes = await fetch('https://api.replicate.com/v1/predictions', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Token ${REPLICATE_TOKEN}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ version: versionHash, input }),
-    })
-
-    if (!createRes.ok) {
-      const err = await createRes.text()
-      throw new Error(`Replicate error ${createRes.status}: ${err}`)
-    }
-
-    const prediction = await createRes.json()
-    if (prediction.status === 'succeeded') return prediction.output
-
-    const pollUrl = prediction.urls?.get
-    if (!pollUrl) throw new Error('No poll URL')
-    return pollPrediction(pollUrl, timeoutMs)
-  }
-
-  // Helper: crear predicción por nombre de modelo
-  async function runModel(owner, name, input, timeoutMs = 90000) {
-    const createRes = await fetch(`https://api.replicate.com/v1/models/${owner}/${name}/predictions`, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Token ${REPLICATE_TOKEN}`,
-        'Content-Type': 'application/json',
-        'Prefer': 'wait=5',
-      },
-      body: JSON.stringify({ input }),
-    })
-
-    if (!createRes.ok) {
-      const err = await createRes.text()
-      throw new Error(`Replicate error ${createRes.status}: ${err}`)
-    }
-
-    const prediction = await createRes.json()
-    if (prediction.status === 'succeeded') return prediction.output
-
-    const pollUrl = prediction.urls?.get
-    if (!pollUrl) throw new Error('No poll URL')
-    return pollPrediction(pollUrl, timeoutMs)
   }
 
   try {
@@ -103,39 +83,18 @@ export default async function handler(req, res) {
       }
     }
 
-    // ── PASO 1: SAM2 — generar máscara de la cama ─────────────
-    let maskUrl = null
-    try {
-      console.log('Paso 1: Generando máscara con SAM2...')
-      const samOutput = await runModel(
-        'meta', 'sam-2',
-        {
-          image: roomDataUrl,
-          point_coords: [[0.5, 0.6]],   // centro-inferior de la imagen (zona cama)
-          point_labels: [1],
-          use_m2m: true,
-        },
-        60000
-      )
-      if (Array.isArray(samOutput)) {
-        maskUrl = samOutput[0]
-      } else if (typeof samOutput === 'string') {
-        maskUrl = samOutput
-      }
-      console.log('Máscara generada:', maskUrl)
-    } catch (samErr) {
-      console.warn('SAM falló, continuando sin máscara:', samErr.message)
-    }
+    // Generar máscara localmente (sin API call)
+    console.log('Generando máscara local...')
+    const maskPng = createBedMask(1024, 1024, 0.40)
+    const maskDataUrl = `data:image/png;base64,${maskPng.toString('base64')}`
+    console.log('Máscara generada, tamaño:', maskPng.length, 'bytes')
 
-    // ── ESPERA entre requests para respetar rate limit ────────
-    console.log('Esperando 12s entre requests...')
-    await sleep(12000)
-
-    // ── PASO 2: Ideogram v3 — inpainting ──────────────────────
-    console.log('Paso 2: Generando imagen con Ideogram v3...')
+    // Ideogram v3 — inpainting con máscara local
+    console.log('Generando imagen con Ideogram v3...')
 
     const ideogramInput = {
       image: roomDataUrl,
+      mask: maskDataUrl,
       prompt: `Replace ONLY the bedding on the bed with a "${productName}" quilt/bedspread. Keep the entire room EXACTLY the same: same walls, furniture, headboard, lamps, pillows, floor. The new bedspread must look photorealistic with natural folds and shadows matching the room lighting. Style: ${style || 'elegant modern interior photography'}.`,
       style: 'REALISTIC',
       resolution: '1024x1024',
@@ -143,45 +102,64 @@ export default async function handler(req, res) {
       magic_prompt_option: 'Off',
     }
 
-    if (maskUrl) {
-      ideogramInput.mask = maskUrl
-      console.log('Usando máscara de SAM')
-    } else {
-      // Sin máscara: Ideogram necesita mask obligatoriamente en modo edición
-      // Usamos una máscara sintética que cubre la mitad inferior (zona cama)
-      // Generada como data URL de imagen blanca/negra en base64
-      const maskBase64 =
-        'iVBORw0KGgoAAAANSUhEUgAABAAAAAQACAIAAADwf7zTAAAAMklEQVR4nO3BMQEAAADCoPVP' +
-        '7WsIoAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAeAMBxAABIABnAAAAAElFTkSuQmCC'
-      // Fallback: máscara sólida blanca (edita toda la imagen con foco en prompt)
-      ideogramInput.mask = `data:image/png;base64,${maskBase64}`
-      console.log('Usando máscara fallback (toda la imagen)')
-    }
-
     if (productDataUrl) {
       ideogramInput.style_reference_images = [productDataUrl]
       ideogramInput.style_reference_strength = 0.8
     }
 
-    const ideogramOutput = await runModel('ideogram-ai', 'ideogram-v3-balanced', ideogramInput, 120000)
+    const createRes = await fetch('https://api.replicate.com/v1/models/ideogram-ai/ideogram-v3-balanced/predictions', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Token ${REPLICATE_TOKEN}`,
+        'Content-Type': 'application/json',
+        'Prefer': 'wait=5',
+      },
+      body: JSON.stringify({ input: ideogramInput }),
+    })
 
-    let imageUrl = null
-    if (Array.isArray(ideogramOutput)) {
-      imageUrl = ideogramOutput[0]
-    } else if (typeof ideogramOutput === 'string') {
-      imageUrl = ideogramOutput
-    } else if (ideogramOutput?.url) {
-      imageUrl = ideogramOutput.url
-    }
-
-    if (!imageUrl) {
-      console.error('Sin imagen en respuesta:', JSON.stringify(ideogramOutput))
-      res.status(500).json({ error: 'No se recibió imagen de Ideogram' })
+    if (!createRes.ok) {
+      const errText = await createRes.text()
+      console.error('Ideogram error:', createRes.status, errText)
+      res.status(500).json({ error: `Ideogram error ${createRes.status}: ${errText}` })
       return
     }
 
-    console.log('Imagen generada:', imageUrl)
-    res.status(200).json({ imageUrl })
+    const prediction = await createRes.json()
+
+    if (prediction.status === 'succeeded') {
+      const imageUrl = Array.isArray(prediction.output) ? prediction.output[0] : prediction.output
+      return res.status(200).json({ imageUrl })
+    }
+
+    if (prediction.error) {
+      return res.status(500).json({ error: `Ideogram falló: ${prediction.error}` })
+    }
+
+    // Polling
+    const pollUrl = prediction.urls?.get
+    if (!pollUrl) {
+      return res.status(500).json({ error: 'No poll URL en respuesta de Replicate' })
+    }
+
+    const deadline = Date.now() + 120000
+    while (Date.now() < deadline) {
+      await new Promise(r => setTimeout(r, 3000))
+      const pollRes = await fetch(pollUrl, {
+        headers: { 'Authorization': `Token ${REPLICATE_TOKEN}` },
+      })
+      const result = await pollRes.json()
+
+      if (result.status === 'succeeded') {
+        const imageUrl = Array.isArray(result.output) ? result.output[0] : result.output
+        console.log('Imagen generada:', imageUrl)
+        return res.status(200).json({ imageUrl })
+      }
+      if (result.status === 'failed' || result.status === 'canceled') {
+        return res.status(500).json({ error: `Ideogram falló: ${result.error || 'unknown'}` })
+      }
+    }
+
+    res.status(500).json({ error: 'Timeout esperando resultado de Ideogram' })
 
   } catch (err) {
     console.error('Error en /api/generate:', err)
