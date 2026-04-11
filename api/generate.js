@@ -1,7 +1,6 @@
 import zlib from 'zlib'
 
-// Genera un PNG de máscara: negro arriba, blanco abajo (zona cama)
-function createBedMask(width, height, bedStartFraction = 0.40) {
+function createBedMask(width, height, bedStartFraction = 0.38) {
   const crcTable = new Uint32Array(256)
   for (let i = 0; i < 256; i++) {
     let c = i
@@ -20,30 +19,20 @@ function createBedMask(width, height, bedStartFraction = 0.40) {
     const crcBuf = Buffer.alloc(4); crcBuf.writeUInt32BE(crcVal)
     return Buffer.concat([lenBuf, typeBuf, data, crcBuf])
   }
-
   const PNG_SIG = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10])
-
   const ihdr = Buffer.alloc(13)
-  ihdr.writeUInt32BE(width, 0)
-  ihdr.writeUInt32BE(height, 4)
-  ihdr[8] = 8; ihdr[9] = 0 // 8-bit grayscale
-
+  ihdr.writeUInt32BE(width, 0); ihdr.writeUInt32BE(height, 4)
+  ihdr[8] = 8; ihdr[9] = 0
   const bedStartRow = Math.floor(height * bedStartFraction)
   const rawRows = []
   for (let y = 0; y < height; y++) {
     const row = Buffer.alloc(width + 1)
-    row[0] = 0 // filter: None
+    row[0] = 0
     row.fill(y >= bedStartRow ? 255 : 0, 1)
     rawRows.push(row)
   }
   const compressed = zlib.deflateSync(Buffer.concat(rawRows))
-
-  return Buffer.concat([
-    PNG_SIG,
-    chunk('IHDR', ihdr),
-    chunk('IDAT', compressed),
-    chunk('IEND', Buffer.alloc(0)),
-  ])
+  return Buffer.concat([PNG_SIG, chunk('IHDR', ihdr), chunk('IDAT', compressed), chunk('IEND', Buffer.alloc(0))])
 }
 
 export default async function handler(req, res) {
@@ -52,7 +41,7 @@ export default async function handler(req, res) {
     return
   }
 
-  const { imageBase64, imageType, productImageUrl, productName, style } = req.body
+  const { imageBase64, imageType, productImageUrl, productName, productDescription, style } = req.body
 
   if (!imageBase64) {
     res.status(400).json({ error: 'Faltan parámetros' })
@@ -83,19 +72,26 @@ export default async function handler(req, res) {
       }
     }
 
-    // Generar máscara localmente (sin API call)
-    console.log('Generando máscara local...')
-    const maskPng = createBedMask(1024, 1024, 0.40)
+    // Generar máscara localmente
+    const maskPng = createBedMask(1024, 1024, 0.38)
     const maskDataUrl = `data:image/png;base64,${maskPng.toString('base64')}`
-    console.log('Máscara generada, tamaño:', maskPng.length, 'bytes')
 
-    // Ideogram v3 — inpainting con máscara local
-    console.log('Generando imagen con Ideogram v3...')
+    // Construir prompt detallado con descripción del producto
+    const descriptionText = productDescription || productName
+    const prompt = `You are editing a bedroom photo. Replace ONLY the bedspread/quilt on the bed with the following product: ${descriptionText}. 
+
+The new bedspread must match this description exactly: ${descriptionText}.
+Keep EVERYTHING else in the room completely unchanged: walls, ceiling, headboard, pillows, nightstands, lamps, decorations, floor, lighting.
+The bedspread should drape naturally over the bed with realistic wrinkles and folds, matching the room's lighting and shadows.
+Result must look like a real professional interior design photograph. Style: ${style || 'elegant modern interior photography'}.`
+
+    console.log('Prompt:', prompt)
+    console.log('Llamando a Ideogram v3...')
 
     const ideogramInput = {
       image: roomDataUrl,
       mask: maskDataUrl,
-      prompt: `Replace ONLY the bedding on the bed with a "${productName}" quilt/bedspread. Keep the entire room EXACTLY the same: same walls, furniture, headboard, lamps, pillows, floor. The new bedspread must look photorealistic with natural folds and shadows matching the room lighting. Style: ${style || 'elegant modern interior photography'}.`,
+      prompt,
       style: 'REALISTIC',
       resolution: '1024x1024',
       rendering_speed: 'BALANCED',
@@ -104,7 +100,7 @@ export default async function handler(req, res) {
 
     if (productDataUrl) {
       ideogramInput.style_reference_images = [productDataUrl]
-      ideogramInput.style_reference_strength = 0.8
+      ideogramInput.style_reference_strength = 0.85
     }
 
     const createRes = await fetch('https://api.replicate.com/v1/models/ideogram-ai/ideogram-v3-balanced/predictions', {
@@ -135,11 +131,8 @@ export default async function handler(req, res) {
       return res.status(500).json({ error: `Ideogram falló: ${prediction.error}` })
     }
 
-    // Polling
     const pollUrl = prediction.urls?.get
-    if (!pollUrl) {
-      return res.status(500).json({ error: 'No poll URL en respuesta de Replicate' })
-    }
+    if (!pollUrl) return res.status(500).json({ error: 'No poll URL' })
 
     const deadline = Date.now() + 120000
     while (Date.now() < deadline) {
@@ -148,7 +141,6 @@ export default async function handler(req, res) {
         headers: { 'Authorization': `Token ${REPLICATE_TOKEN}` },
       })
       const result = await pollRes.json()
-
       if (result.status === 'succeeded') {
         const imageUrl = Array.isArray(result.output) ? result.output[0] : result.output
         console.log('Imagen generada:', imageUrl)
@@ -159,7 +151,7 @@ export default async function handler(req, res) {
       }
     }
 
-    res.status(500).json({ error: 'Timeout esperando resultado de Ideogram' })
+    res.status(500).json({ error: 'Timeout' })
 
   } catch (err) {
     console.error('Error en /api/generate:', err)
