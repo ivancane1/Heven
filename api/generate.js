@@ -17,15 +17,33 @@ export default async function handler(req, res) {
     return
   }
 
-  // Helper: llamar a Replicate y esperar resultado (polling)
-  async function runReplicate(modelVersion, input, timeoutMs = 120000) {
-    const createRes = await fetch('https://api.replicate.com/v1/predictions', {
+  // Helper: polling de una predicción ya creada
+  async function pollPrediction(pollUrl, timeoutMs = 120000) {
+    const deadline = Date.now() + timeoutMs
+    while (Date.now() < deadline) {
+      await new Promise(r => setTimeout(r, 2500))
+      const pollRes = await fetch(pollUrl, {
+        headers: { 'Authorization': `Token ${REPLICATE_TOKEN}` },
+      })
+      const result = await pollRes.json()
+      if (result.status === 'succeeded') return result.output
+      if (result.status === 'failed' || result.status === 'canceled') {
+        throw new Error(`Replicate prediction ${result.status}: ${result.error || 'unknown'}`)
+      }
+    }
+    throw new Error('Timeout esperando resultado de Replicate')
+  }
+
+  // Helper: crear predicción por nombre de modelo (sin hash)
+  async function runModel(owner, name, input, timeoutMs = 120000) {
+    const createRes = await fetch(`https://api.replicate.com/v1/models/${owner}/${name}/predictions`, {
       method: 'POST',
       headers: {
         'Authorization': `Token ${REPLICATE_TOKEN}`,
         'Content-Type': 'application/json',
+        'Prefer': 'wait=5',
       },
-      body: JSON.stringify({ version: modelVersion, input }),
+      body: JSON.stringify({ input }),
     })
 
     if (!createRes.ok) {
@@ -34,24 +52,11 @@ export default async function handler(req, res) {
     }
 
     const prediction = await createRes.json()
+    if (prediction.status === 'succeeded') return prediction.output
+
     const pollUrl = prediction.urls?.get
     if (!pollUrl) throw new Error('No poll URL en respuesta de Replicate')
-
-    const deadline = Date.now() + timeoutMs
-    while (Date.now() < deadline) {
-      await new Promise(r => setTimeout(r, 2500))
-
-      const pollRes = await fetch(pollUrl, {
-        headers: { 'Authorization': `Token ${REPLICATE_TOKEN}` },
-      })
-      const result = await pollRes.json()
-
-      if (result.status === 'succeeded') return result.output
-      if (result.status === 'failed' || result.status === 'canceled') {
-        throw new Error(`Replicate prediction ${result.status}: ${result.error || 'unknown'}`)
-      }
-    }
-    throw new Error('Timeout esperando resultado de Replicate')
+    return pollPrediction(pollUrl, timeoutMs)
   }
 
   try {
@@ -76,8 +81,8 @@ export default async function handler(req, res) {
     let maskUrl = null
     try {
       console.log('Paso 1: Generando máscara con Grounded SAM...')
-      const samOutput = await runReplicate(
-        'schananas/grounded_sam:7a08e58ca8be9f0fcf09a21c0280d85d1f5ad87b56df1f22e42f9d80f41e8c12',
+      const samOutput = await runModel(
+        'schananas', 'grounded_sam',
         {
           image: roomDataUrl,
           prompt: 'bed, mattress, bedspread, quilt, blanket, duvet, comforter',
@@ -118,8 +123,8 @@ export default async function handler(req, res) {
       ideogramInput.style_reference_strength = 0.8
     }
 
-    const ideogramOutput = await runReplicate(
-      'ideogram-ai/ideogram-v3-balanced:2bab9b3c0de0a8d3e8a3b8f88c0d2e5f1a4c7d9e2b5a8f1c4d7e0a3b6c9f2e5',
+    const ideogramOutput = await runModel(
+      'ideogram-ai', 'ideogram-v3-balanced',
       ideogramInput,
       120000
     )
