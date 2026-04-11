@@ -1,26 +1,15 @@
 import { useState, useRef, useCallback, useEffect } from 'react'
 import { PRODUCTS, CATEGORIES } from './products.js'
-import {
-  supabase,
-  checkAnonUsage,
-  registerAnonUsage,
-  saveVisualization,
-  sendMagicLink,
-  getCurrentUser,
-} from './supabase.js'
+import { supabase, checkAnonUsage, registerAnonUsage, saveVisualization, sendMagicLink, getCurrentUser } from './supabase.js'
 
 const CSS = `
   @import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;1,300;1,400&family=Jost:wght@300;400;500&display=swap');
   *{box-sizing:border-box;margin:0;padding:0}
-  :root{
-    --cream:#F5F0E8;--linen:#EDE6D6;--terra:#B5603A;--terra-l:#D4835F;
-    --sage:#7A8C6E;--dark:#2C2C2C;--gray:#9E9589;--white:#FDFAF5;
-  }
+  :root{--cream:#F5F0E8;--linen:#EDE6D6;--terra:#B5603A;--terra-l:#D4835F;--sage:#7A8C6E;--dark:#2C2C2C;--gray:#9E9589;--white:#FDFAF5;}
   body{background:var(--cream);font-family:'Jost',sans-serif}
   .app{max-width:430px;min-height:100vh;margin:0 auto;background:var(--white);box-shadow:0 0 60px rgba(0,0,0,.08);overflow:hidden}
   .header{padding:20px 24px 16px;border-bottom:1px solid var(--linen);display:flex;align-items:center;gap:12px;background:var(--white);position:sticky;top:0;z-index:100}
-  .hback{width:36px;height:36px;border:1px solid var(--linen);border-radius:50%;background:none;cursor:pointer;display:flex;align-items:center;justify-content:center;color:var(--dark);font-size:16px;transition:.2s}
-  .hback:hover{background:var(--linen)}
+  .hback{width:36px;height:36px;border:1px solid var(--linen);border-radius:50%;background:none;cursor:pointer;display:flex;align-items:center;justify-content:center;color:var(--dark);font-size:16px}
   .htitle{font-family:'Cormorant Garamond',serif;font-size:22px;font-weight:400;color:var(--dark)}
   .hstep{margin-left:auto;font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--gray)}
   .steps{display:flex;gap:4px;padding:0 24px;margin:16px 0 0}
@@ -54,7 +43,6 @@ const CSS = `
   .grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:24px}
   .card{border-radius:12px;overflow:hidden;border:2px solid transparent;cursor:pointer;transition:.25s;position:relative;background:var(--linen)}
   .card.sel{border-color:var(--terra);transform:scale(.97)}
-  .card:hover{transform:scale(.98)}
   .swatch{height:130px;display:flex;align-items:center;justify-content:center;font-size:42px;position:relative;overflow:hidden}
   .pimg{width:100%;height:130px;object-fit:cover;display:block}
   .check{position:absolute;top:8px;right:8px;width:22px;height:22px;border-radius:50%;background:var(--terra);color:#fff;font-size:12px;display:flex;align-items:center;justify-content:center;opacity:0;transition:.2s}
@@ -71,14 +59,17 @@ const CSS = `
   .spin{width:52px;height:52px;border:2px solid var(--linen);border-top-color:var(--terra);border-radius:50%;animation:spin 1s linear infinite}
   @keyframes spin{to{transform:rotate(360deg)}}
   .ltxt{font-family:'Cormorant Garamond',serif;font-size:22px;color:var(--dark);font-weight:300}
-  .lsub{font-size:12px;color:var(--gray);letter-spacing:.08em;line-height:1.6}
-  .lprog{width:100%;max-width:200px;height:2px;background:var(--linen);border-radius:2px;overflow:hidden;margin-top:4px}
-  .lprogbar{height:100%;background:var(--terra);border-radius:2px;animation:prog 25s linear forwards}
+  .lsteps{display:flex;flex-direction:column;gap:8px;margin-top:8px;text-align:left;max-width:280px}
+  .lstep{display:flex;align-items:center;gap:10px;font-size:12px;color:var(--gray);padding:8px 12px;border-radius:8px;background:var(--linen);transition:.3s}
+  .lstep.active{background:var(--terra);color:white}
+  .lstep.done{background:var(--sage);color:white}
+  .lprog{width:100%;max-width:200px;height:2px;background:var(--linen);border-radius:2px;overflow:hidden;margin-top:8px}
+  .lprogbar{height:100%;background:var(--terra);border-radius:2px;animation:prog 90s linear forwards}
   @keyframes prog{from{width:0%}to{width:95%}}
   .genimg-wrap{position:relative;border-radius:16px;overflow:hidden;margin-bottom:12px}
   .genimg{width:100%;display:block;border-radius:16px}
   .genbadge{position:absolute;top:12px;left:12px;background:rgba(181,96,58,.92);color:#fff;padding:5px 12px;border-radius:20px;font-size:10px;font-weight:500;letter-spacing:.1em;text-transform:uppercase;backdrop-filter:blur(4px)}
-  .aibadge{position:absolute;top:12px;right:12px;background:rgba(0,0,0,.7);color:#fff;padding:5px 10px;border-radius:20px;font-size:10px;letter-spacing:.06em;backdrop-filter:blur(4px)}
+  .aibadge{position:absolute;top:12px;right:12px;background:rgba(0,0,0,.7);color:#fff;padding:5px 10px;border-radius:20px;font-size:10px;backdrop-filter:blur(4px)}
   .toggle-row{display:flex;gap:8px;margin-bottom:20px}
   .tglbtn{flex:1;padding:9px;border-radius:10px;border:1.5px solid var(--linen);background:none;font-family:'Jost',sans-serif;font-size:11px;font-weight:500;letter-spacing:.08em;color:var(--gray);cursor:pointer;transition:.2s;text-transform:uppercase}
   .tglbtn.on{border-color:var(--terra);color:var(--terra);background:#FEF4EF}
@@ -110,10 +101,15 @@ const CSS = `
   .minput:focus{border-color:var(--terra)}
   .mskip{width:100%;padding:12px;background:none;border:none;font-family:'Jost',sans-serif;font-size:12px;color:var(--gray);cursor:pointer;text-decoration:underline;margin-top:4px}
   .err{background:#FEF0EC;border:1px solid #F5C6B4;border-radius:12px;padding:14px 16px;font-size:13px;color:var(--terra);line-height:1.5;margin-bottom:16px}
-  .banner{background:var(--dark);color:#fff;padding:12px 20px;text-align:center;font-size:12px;letter-spacing:.06em;line-height:1.6}
+  .banner{background:var(--dark);color:#fff;padding:12px 20px;text-align:center;font-size:12px;line-height:1.6}
   .banner strong{color:var(--terra-l)}
-  .ubox{text-align:center;margin-top:16px;padding:14px 16px;background:var(--linen);border-radius:12px}
 `
+
+const LOAD_STEPS = [
+  { id: 'analyze', label: '1. Analizando tu espacio con Claude...' },
+  { id: 'mask', label: '2. Detectando área de la cama (SAM)...' },
+  { id: 'generate', label: '3. Generando visualización (IP-Adapter)...' },
+]
 
 export default function App() {
   const [screen, setScreen]     = useState(1)
@@ -125,7 +121,7 @@ export default function App() {
   const [result, setResult]     = useState(null)
   const [genImg, setGenImg]     = useState(null)
   const [showGen, setShowGen]   = useState(true)
-  const [loadStep, setLoadStep] = useState('')
+  const [loadStep, setLoadStep] = useState(0)
   const [loading, setLoading]   = useState(false)
   const [error, setError]       = useState(null)
   const [user, setUser]         = useState(null)
@@ -148,21 +144,36 @@ export default function App() {
   const handleImg = useCallback((e) => {
     const file = e.target.files?.[0]
     if (!file) return
+    const allowed = ['image/jpeg', 'image/png', 'image/webp', 'image/gif']
+    if (!allowed.includes(file.type)) {
+      alert('Formato no soportado. Por favor usá una foto JPG, PNG o WEBP.\n\nSi tu foto es .avif, hacé captura de pantalla y subí esa imagen.')
+      return
+    }
     setImgFile(file)
     const r = new FileReader()
-    r.onload = (ev) => {
-      setImgPrev(ev.target.result)
-      setImg64(ev.target.result.split(',')[1])
-    }
+    r.onload = (ev) => { setImgPrev(ev.target.result); setImg64(ev.target.result.split(',')[1]) }
     r.readAsDataURL(file)
   }, [])
 
   const toggle = (p) => {
-    setSel(prev =>
-      prev.find(x => x.id === p.id)
-        ? prev.filter(x => x.id !== p.id)
-        : prev.length < 4 ? [...prev, p] : prev
-    )
+    setSel(prev => prev.find(x => x.id === p.id) ? prev.filter(x => x.id !== p.id) : prev.length < 4 ? [...prev, p] : prev)
+  }
+
+  // Cargar imágenes de productos como base64 para mandar a Claude
+  const loadProductImages = async (products) => {
+    const result = []
+    for (const p of products) {
+      if (!p.image) continue
+      try {
+        const r = await fetch(p.image)
+        if (!r.ok) continue
+        const buf = await r.arrayBuffer()
+        const base64 = btoa(String.fromCharCode(...new Uint8Array(buf)))
+        const mimeType = r.headers.get('content-type') || 'image/png'
+        result.push({ base64, mimeType, name: p.name })
+      } catch {}
+    }
+    return result
   }
 
   const analyze = async () => {
@@ -170,12 +181,14 @@ export default function App() {
     setLoading(true)
     setError(null)
     setGenImg(null)
+    setLoadStep(0)
 
     const productList = sel.map(p => `• ${p.name} (${p.detail}): ${p.tags}`).join('\n')
 
     try {
-      // PASO 1 — Claude analiza el espacio
-      setLoadStep('Analizando tu espacio…')
+      // PASO 1 — Claude analiza espacio + ve fotos reales de productos
+      const productImagesBase64 = await loadProductImages(sel)
+
       const res1 = await fetch('/api/analyze', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -183,23 +196,20 @@ export default function App() {
           imageBase64: img64,
           imageType: imgFile?.type || 'image/jpeg',
           productList,
+          productImagesBase64,  // Claude ve las fotos reales
         }),
       })
-
       const data1 = await res1.json()
-      if (!res1.ok || data1.error) throw new Error(data1.error || `Error del servidor: ${res1.status}`)
+      if (!res1.ok || data1.error) throw new Error(data1.error || `Error: ${res1.status}`)
       const parsed = data1.result
       setResult(parsed)
 
-      // PASO 2 — Fal.ai con las DOS imágenes: espacio + foto real del producto
-      setLoadStep('Generando la visualización con IA…')
-
-      // Tomar el primer producto con imagen real
+      // PASO 2 y 3 — SAM + IP-Adapter via Replicate
+      setLoadStep(1)
       const productWithImage = sel.find(p => p.image)
-      const productImageUrl = productWithImage
-        ? `${window.location.origin}${productWithImage.image}`
-        : null
+      const productImageUrl = productWithImage ? `${window.location.origin}${productWithImage.image}` : null
 
+      setLoadStep(2)
       const res2 = await fetch('/api/generate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -208,6 +218,7 @@ export default function App() {
           imageType: imgFile?.type || 'image/jpeg',
           productImageUrl,
           productName: sel.map(p => p.name).join(', '),
+          productDescription: parsed.productDescription,
           style: parsed.style,
         }),
       })
@@ -216,7 +227,7 @@ export default function App() {
         const data2 = await res2.json()
         if (data2.imageUrl) { setGenImg(data2.imageUrl); setShowGen(true) }
       } else {
-        console.warn('Fal.ai falló')
+        console.warn('Generación falló')
         setShowGen(false)
       }
 
@@ -228,7 +239,6 @@ export default function App() {
       setError(err.message || 'Hubo un problema. Verificá tu conexión e intentá de nuevo.')
     } finally {
       setLoading(false)
-      setLoadStep('')
     }
   }
 
@@ -242,7 +252,7 @@ export default function App() {
 
   const reset = () => {
     setScreen(1); setImgFile(null); setImgPrev(null); setImg64(null)
-    setSel([]); setResult(null); setGenImg(null); setError(null)
+    setSel([]); setResult(null); setGenImg(null); setError(null); setLoadStep(0)
   }
 
   const waMsg = () => {
@@ -270,10 +280,7 @@ export default function App() {
             {screen === 1 ? 'Mi Espacio' : screen === 2 ? 'Elegí productos' : 'Tu visualización'}
           </span>
           <span className="hstep">
-            {user
-              ? <span style={{fontSize:10,color:'var(--sage)'}}>✦ {user.email?.split('@')[0]}</span>
-              : `${screen}/3`
-            }
+            {user ? <span style={{fontSize:10,color:'var(--sage)'}}>✦ {user.email?.split('@')[0]}</span> : `${screen}/3`}
           </span>
         </div>
 
@@ -285,15 +292,13 @@ export default function App() {
           <div className={`sline ${screen >= 3 ? 'on' : ''}`} />
         </div>
 
-        {/* ── PANTALLA 1 ── */}
         {screen === 1 && (
           <div className="screen">
             <div className="eye">Paso 1 de 3</div>
             <h1 className="h1">Mostranos tu<br /><em>espacio</em></h1>
-            <p className="sub">Sacale una foto a tu habitación o ambiente. La IA generará una visualización real con nuestros productos en tu espacio.</p>
-
+            <p className="sub">Sacale una foto a tu habitación. La IA detectará la cama y colocará nuestros productos con máxima fidelidad.</p>
             <div className={`uzone ${imgPrev ? 'has' : ''}`}>
-              <input ref={fileRef} type="file" accept="image/*" onChange={handleImg} />
+              <input ref={fileRef} type="file" accept="image/jpeg,image/png,image/webp" onChange={handleImg} />
               {imgPrev ? (
                 <>
                   <img src={imgPrev} className="prev" alt="Tu espacio" />
@@ -303,34 +308,23 @@ export default function App() {
                 <>
                   <span className="uico">📷</span>
                   <div className="utxt">Subí una foto de tu ambiente</div>
-                  <div className="uhint">JPG · PNG · WEBP · galería o cámara</div>
+                  <div className="uhint">JPG · PNG · WEBP</div>
                 </>
               )}
             </div>
-
             <button className="btn" disabled={!imgPrev} onClick={() => setScreen(2)}>Continuar →</button>
-
             <div className="tip">
               <span className="tipico">💡</span>
-              <span className="tiptxt"><strong>Tip:</strong> Las fotos con buena luz natural dan mejores resultados. Incluí la cama o el sillón donde irían los productos.</span>
+              <span className="tiptxt"><strong>Tip:</strong> Foto con buena luz natural y la cama visible completa da los mejores resultados.</span>
             </div>
-
-            {!user && (
-              <p style={{textAlign:'center',marginTop:20,fontSize:12,color:'var(--gray)'}}>
-                ¿Ya tenés cuenta?{' '}
-                <span style={{color:'var(--terra)',cursor:'pointer',textDecoration:'underline'}} onClick={() => setModal(true)}>Ingresá acá</span>
-              </p>
-            )}
           </div>
         )}
 
-        {/* ── PANTALLA 2 ── */}
         {screen === 2 && (
           <div className="screen">
             <div className="eye">Paso 2 de 3</div>
             <h1 className="h1">¿Qué querés <em>ver</em>?</h1>
-            <p className="sub">Elegí hasta 4 productos. La IA los integrará en tu foto.</p>
-
+            <p className="sub">Elegí hasta 4 productos. El pipeline de IA los integrará en tu foto con alta fidelidad.</p>
             {sel.length > 0 && (
               <div className="selbar">
                 <div>
@@ -338,17 +332,15 @@ export default function App() {
                   <div className="selct">{sel.length} de 4</div>
                 </div>
                 <div style={{display:'flex',gap:6}}>
-                  {sel.map(p => <span key={p.id} style={{fontSize:20}}>{p.image ? '🖼️' : p.emoji}</span>)}
+                  {sel.map(p => <span key={p.id} style={{fontSize:20}}>{p.emoji}</span>)}
                 </div>
               </div>
             )}
-
             <div className="tabs">
               {CATEGORIES.map(c => (
                 <button key={c} className={`tab ${cat === c ? 'on' : ''}`} onClick={() => setCat(c)}>{c}</button>
               ))}
             </div>
-
             <div className="grid">
               {PRODUCTS[cat].map(p => {
                 const isSel = sel.find(x => x.id === p.id)
@@ -364,53 +356,48 @@ export default function App() {
                     <div className="cinfo">
                       <div className="cname">{p.name}</div>
                       <div className="cdet">{p.detail}</div>
-                      <div className="cdots">
-                        {p.colors.map((c, i) => <div key={i} className="dot" style={{background:c}} />)}
-                      </div>
+                      <div className="cdots">{p.colors.map((c,i) => <div key={i} className="dot" style={{background:c}} />)}</div>
                     </div>
                   </div>
                 )
               })}
             </div>
-
             {error && <div className="err">⚠️ {error}</div>}
-
             <button className="btn" disabled={sel.length === 0 || loading} onClick={analyze}>
-              {loading ? 'Procesando...' : 'Generar visualización →'}
+              Generar visualización →
             </button>
           </div>
         )}
 
-        {/* ── LOADING ── */}
         {loading && (
           <div className="screen" style={{padding:0}}>
             <div className="loading">
               <div className="spin" />
-              <div className="ltxt">{loadStep || 'Procesando…'}</div>
-              <div className="lsub">
-                {loadStep.includes('Generando')
-                  ? 'Esto puede tardar hasta 20 segundos'
-                  : 'Analizando colores, estilo y luz'
-                }
+              <div className="ltxt">Procesando...</div>
+              <div className="lsteps">
+                {LOAD_STEPS.map((s, i) => (
+                  <div key={s.id} className={`lstep ${i === loadStep ? 'active' : i < loadStep ? 'done' : ''}`}>
+                    <span>{i < loadStep ? '✓' : i === loadStep ? '⟳' : '○'}</span>
+                    {s.label}
+                  </div>
+                ))}
               </div>
               <div className="lprog"><div className="lprogbar" /></div>
+              <div style={{fontSize:11,color:'var(--gray)',marginTop:4}}>Puede tardar hasta 90 segundos</div>
             </div>
           </div>
         )}
 
-        {/* ── PANTALLA 3 ── */}
         {screen === 3 && result && !loading && (
           <div className="screen">
             <div className="eye">Tu visualización</div>
             <h1 className="h1">Así <em>quedaría</em></h1>
-
             {genImg && (
               <div className="toggle-row">
                 <button className={`tglbtn ${showGen ? 'on' : ''}`} onClick={() => setShowGen(true)}>✦ Con productos</button>
-                <button className={`tglbtn ${!showGen ? 'on' : ''}`} onClick={() => setShowGen(false)}>Tu foto original</button>
+                <button className={`tglbtn ${!showGen ? 'on' : ''}`} onClick={() => setShowGen(false)}>Foto original</button>
               </div>
             )}
-
             {genImg && showGen && (
               <div className="genimg-wrap">
                 <img src={genImg} className="genimg" alt="Tu espacio con productos" />
@@ -418,64 +405,54 @@ export default function App() {
                 <div className="aibadge">Generado con IA</div>
               </div>
             )}
-
             {(!genImg || !showGen) && (
               <div className="riwrap">
                 <img src={imgPrev} className="rimg" style={{height:'auto',maxHeight:280}} alt="Tu espacio" />
-                <div className="rbadge">📷 {!genImg ? result.style : 'Foto original'}</div>
+                <div className="rbadge">{!genImg ? result.style : '📷 Foto original'}</div>
               </div>
             )}
-
             <div className="chips" style={{marginTop:12}}>
               {sel.map(p => <span key={p.id} className="chip">{p.emoji} {p.name}</span>)}
             </div>
-
             <div className="rcard">
               <div className="rlbl">✦ Análisis de tu espacio</div>
               <p className="rtxt">{result.harmony}</p>
             </div>
-
             {result.colorNote && (
               <div style={{marginBottom:20}}>
                 <div className="stit">Paleta de colores</div>
                 <p style={{fontSize:13,color:'var(--dark)',lineHeight:1.6,fontWeight:300}}>{result.colorNote}</p>
               </div>
             )}
-
             {result.suggestions?.length > 0 && (
               <div style={{marginBottom:24}}>
                 <div className="stit">Consejos de estilismo</div>
                 <ul className="slist">
-                  {result.suggestions.map((s, i) => (
+                  {result.suggestions.map((s,i) => (
                     <li key={i} className="sitem"><div className="sdot" />{s}</li>
                   ))}
                 </ul>
               </div>
             )}
-
             <a href={`https://wa.me/?text=${waMsg()}`} target="_blank" rel="noopener noreferrer" className="btnwa">
               <span>💬</span> Quiero estos productos
             </a>
-
             <div className="btngrid">
               <button className="btn2" onClick={() => setScreen(2)}>← Cambiar</button>
               <button className="btn2" onClick={reset}>Nueva foto</button>
             </div>
-
             {!user && (
-              <div className="ubox">
+              <div style={{textAlign:'center',marginTop:16,padding:'14px 16px',background:'var(--linen)',borderRadius:12}}>
                 <p style={{fontSize:12,color:'var(--dark)',lineHeight:1.6,marginBottom:8}}>Guardá tus visualizaciones y accedé sin límites</p>
                 <button className="btn" style={{margin:0}} onClick={() => setModal(true)}>Crear cuenta gratis</button>
               </div>
             )}
-
             <p style={{textAlign:'center',fontSize:11,color:'var(--gray)',marginTop:12,lineHeight:1.5}}>
               Hacé captura de pantalla para guardar 📸
             </p>
           </div>
         )}
 
-        {/* ── MODAL ── */}
         {modal && (
           <div className="moverlay" onClick={e => e.target === e.currentTarget && setModal(false)}>
             <div className="modal">
@@ -496,7 +473,9 @@ export default function App() {
                 <div style={{textAlign:'center',padding:'12px 0'}}>
                   <div style={{fontSize:40,marginBottom:12}}>📬</div>
                   <div style={{fontFamily:'Cormorant Garamond,serif',fontSize:20,color:'var(--dark)'}}>¡Revisá tu email!</div>
-                  <p style={{fontSize:12,color:'var(--gray)',marginTop:6,lineHeight:1.6}}>Te mandamos un link a <strong>{email}</strong>.<br />Tocalo para acceder sin límites.</p>
+                  <p style={{fontSize:12,color:'var(--gray)',marginTop:6,lineHeight:1.6}}>
+                    Te mandamos un link a <strong>{email}</strong>.<br />Tocalo para acceder sin límites.
+                  </p>
                   <button className="mskip" onClick={() => { setModal(false); setMstate('form') }}>Cerrar</button>
                 </div>
               )}
