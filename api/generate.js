@@ -1,40 +1,3 @@
-import zlib from 'zlib'
-
-function createBedMask(width, height, bedStartFraction = 0.38) {
-  const crcTable = new Uint32Array(256)
-  for (let i = 0; i < 256; i++) {
-    let c = i
-    for (let j = 0; j < 8; j++) c = (c & 1) ? 0xEDB88320 ^ (c >>> 1) : c >>> 1
-    crcTable[i] = c
-  }
-  function crc32(buf) {
-    let crc = 0xFFFFFFFF
-    for (const b of buf) crc = crcTable[(crc ^ b) & 0xFF] ^ (crc >>> 8)
-    return (crc ^ 0xFFFFFFFF) >>> 0
-  }
-  function chunk(type, data) {
-    const lenBuf = Buffer.alloc(4); lenBuf.writeUInt32BE(data.length)
-    const typeBuf = Buffer.from(type, 'ascii')
-    const crcVal = crc32(Buffer.concat([typeBuf, data]))
-    const crcBuf = Buffer.alloc(4); crcBuf.writeUInt32BE(crcVal)
-    return Buffer.concat([lenBuf, typeBuf, data, crcBuf])
-  }
-  const PNG_SIG = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10])
-  const ihdr = Buffer.alloc(13)
-  ihdr.writeUInt32BE(width, 0); ihdr.writeUInt32BE(height, 4)
-  ihdr[8] = 8; ihdr[9] = 0
-  const bedStartRow = Math.floor(height * bedStartFraction)
-  const rawRows = []
-  for (let y = 0; y < height; y++) {
-    const row = Buffer.alloc(width + 1)
-    row[0] = 0
-    row.fill(y >= bedStartRow ? 255 : 0, 1)
-    rawRows.push(row)
-  }
-  const compressed = zlib.deflateSync(Buffer.concat(rawRows))
-  return Buffer.concat([PNG_SIG, chunk('IHDR', ihdr), chunk('IDAT', compressed), chunk('IEND', Buffer.alloc(0))])
-}
-
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
     res.status(405).end('Method Not Allowed')
@@ -56,71 +19,44 @@ export default async function handler(req, res) {
 
   try {
     const roomDataUrl = `data:${imageType || 'image/jpeg'};base64,${imageBase64}`
-
-    // Convertir imagen del producto a base64
-    let productDataUrl = null
-    if (productImageUrl) {
-      try {
-        const productRes = await fetch(productImageUrl)
-        if (productRes.ok) {
-          const buf = Buffer.from(await productRes.arrayBuffer())
-          const mime = productRes.headers.get('content-type') || 'image/png'
-          productDataUrl = `data:${mime};base64,${buf.toString('base64')}`
-        }
-      } catch (e) {
-        console.warn('No se pudo cargar imagen del producto:', e.message)
-      }
-    }
-
-    // Generar máscara localmente
-    const maskPng = createBedMask(1024, 1024, 0.38)
-    const maskDataUrl = `data:image/png;base64,${maskPng.toString('base64')}`
-
-    // Construir prompt detallado con descripción del producto
     const descriptionText = productDescription || productName
-    const prompt = `You are editing a bedroom photo. Replace ONLY the bedspread/quilt on the bed with the following product: ${descriptionText}. 
 
-The new bedspread must match this description exactly: ${descriptionText}.
-Keep EVERYTHING else in the room completely unchanged: walls, ceiling, headboard, pillows, nightstands, lamps, decorations, floor, lighting.
-The bedspread should drape naturally over the bed with realistic wrinkles and folds, matching the room's lighting and shadows.
-Result must look like a real professional interior design photograph. Style: ${style || 'elegant modern interior photography'}.`
+    // Prompt muy específico para Flux Kontext
+    const prompt = `Add a bedspread/quilt on top of the bed mattress surface. The bedspread is: ${descriptionText}. 
+The bedspread should cover the entire top surface of the bed, draping naturally over the sides with realistic folds and shadows that match the existing room lighting.
+Do NOT change anything else in the room: keep the same walls, headboard, pillows, nightstands, lamps, floor, and all other objects exactly as they are.
+The result must look like a professional interior design photograph.`
 
+    console.log('Llamando a Flux Kontext Pro en Replicate...')
     console.log('Prompt:', prompt)
-    console.log('Llamando a Ideogram v3...')
 
-    const ideogramInput = {
-      image: roomDataUrl,
-      mask: maskDataUrl,
-      prompt,
-      style: 'REALISTIC',
-      resolution: '1024x1024',
-      rendering_speed: 'BALANCED',
-      magic_prompt_option: 'Off',
-    }
-
-    if (productDataUrl) {
-      ideogramInput.style_reference_images = [productDataUrl]
-      ideogramInput.style_reference_strength = 0.85
-    }
-
-    const createRes = await fetch('https://api.replicate.com/v1/models/ideogram-ai/ideogram-v3-balanced/predictions', {
+    // Crear predicción con Flux Kontext Pro
+    const createRes = await fetch('https://api.replicate.com/v1/models/black-forest-labs/flux-kontext-pro/predictions', {
       method: 'POST',
       headers: {
         'Authorization': `Token ${REPLICATE_TOKEN}`,
         'Content-Type': 'application/json',
         'Prefer': 'wait=5',
       },
-      body: JSON.stringify({ input: ideogramInput }),
+      body: JSON.stringify({
+        input: {
+          prompt,
+          input_image: roomDataUrl,
+          output_format: 'jpg',
+          safety_tolerance: 2,
+        }
+      }),
     })
 
     if (!createRes.ok) {
       const errText = await createRes.text()
-      console.error('Ideogram error:', createRes.status, errText)
-      res.status(500).json({ error: `Ideogram error ${createRes.status}: ${errText}` })
+      console.error('Flux Kontext error:', createRes.status, errText)
+      res.status(500).json({ error: `Flux Kontext error ${createRes.status}: ${errText}` })
       return
     }
 
     const prediction = await createRes.json()
+    console.log('Predicción creada, status:', prediction.status)
 
     if (prediction.status === 'succeeded') {
       const imageUrl = Array.isArray(prediction.output) ? prediction.output[0] : prediction.output
@@ -128,9 +64,10 @@ Result must look like a real professional interior design photograph. Style: ${s
     }
 
     if (prediction.error) {
-      return res.status(500).json({ error: `Ideogram falló: ${prediction.error}` })
+      return res.status(500).json({ error: `Flux Kontext falló: ${prediction.error}` })
     }
 
+    // Polling
     const pollUrl = prediction.urls?.get
     if (!pollUrl) return res.status(500).json({ error: 'No poll URL' })
 
@@ -141,17 +78,21 @@ Result must look like a real professional interior design photograph. Style: ${s
         headers: { 'Authorization': `Token ${REPLICATE_TOKEN}` },
       })
       const result = await pollRes.json()
+
+      console.log('Poll status:', result.status)
+
       if (result.status === 'succeeded') {
         const imageUrl = Array.isArray(result.output) ? result.output[0] : result.output
         console.log('Imagen generada:', imageUrl)
         return res.status(200).json({ imageUrl })
       }
       if (result.status === 'failed' || result.status === 'canceled') {
-        return res.status(500).json({ error: `Ideogram falló: ${result.error || 'unknown'}` })
+        console.error('Flux Kontext falló:', result.error)
+        return res.status(500).json({ error: `Flux Kontext falló: ${result.error || 'unknown'}` })
       }
     }
 
-    res.status(500).json({ error: 'Timeout' })
+    res.status(500).json({ error: 'Timeout esperando resultado' })
 
   } catch (err) {
     console.error('Error en /api/generate:', err)
