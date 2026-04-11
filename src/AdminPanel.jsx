@@ -71,7 +71,21 @@ export default function AdminPanel({ onBack }) {
   const [catName, setCatName] = useState('')
   const [catSlug, setCatSlug] = useState('')
 
-  useEffect(() => { loadCategories(); loadProducts() }, [])
+  const [session, setSession] = useState(null)
+  const [authChecked, setAuthChecked] = useState(false)
+
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setSession(session)
+      setAuthChecked(true)
+      if (session) { loadCategories(); loadProducts() }
+    })
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_e, sess) => {
+      setSession(sess)
+      if (sess) { loadCategories(); loadProducts() }
+    })
+    return () => subscription.unsubscribe()
+  }, [])
 
   const showMsg = (text, type = 'ok') => {
     setMsg({ text, type })
@@ -213,6 +227,26 @@ export default function AdminPanel({ onBack }) {
     showMsg('Categoría eliminada')
     loadCategories()
   }
+
+  if (authChecked && !session) return (
+    <>
+      <style>{A}</style>
+      <div className="adm">
+        <div className="adm-hdr">
+          <span className="adm-title">Admin · Heven</span>
+          <button className="adm-back" onClick={onBack}>← Salir</button>
+        </div>
+        <div className="adm-body" style={{textAlign:'center',paddingTop:60}}>
+          <div style={{fontSize:32,marginBottom:16}}>🔒</div>
+          <div style={{fontFamily:"'Cormorant Garamond',serif",fontSize:22,color:'#2C2C2C',marginBottom:8}}>Acceso restringido</div>
+          <div style={{fontSize:13,color:'#9E9589',marginBottom:24}}>Tenés que iniciar sesión para acceder al admin</div>
+          <button className="adm-btn" onClick={onBack}>← Volver a la app</button>
+        </div>
+      </div>
+    </>
+  )
+
+  if (!authChecked) return <div style={{padding:40,textAlign:'center',color:'#9E9589',fontFamily:"'Jost',sans-serif"}}>Verificando sesión...</div>
 
   return (
     <>
