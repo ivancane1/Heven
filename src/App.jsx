@@ -208,6 +208,7 @@ export default function App() {
           imageType: imgFile?.type || 'image/jpeg',
           productImageUrl,
           productName: sel.map(p => p.name).join(', '),
+          productDescription: sel.map(p => p.tags || p.name).join('. '),
           style: parsed.style,
         }),
       })
