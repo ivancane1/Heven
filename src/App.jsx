@@ -136,7 +136,7 @@ export default function App() {
   const [email, setEmail]       = useState('')
   const [sending, setSending]   = useState(false)
   const fileRef = useRef()
-  const [adminMode, setAdminMode] = useState(false)
+  const [adminMode, setAdminMode] = useState(window.location.pathname === '/admin')
   const [dbProducts, setDbProducts] = useState([])
   const allProducts = dbProducts.length > 0 ? dbProducts : PRODUCTS
 
@@ -258,7 +258,7 @@ export default function App() {
     return encodeURIComponent(`Hola! Usé el visualizador y me interesa:\n\n${list}\n\n¿Me podés dar más info?`)
   }
 
-  if (adminMode) return <AdminPanel onBack={() => setAdminMode(false)} />
+  if (adminMode) return <AdminPanel onBack={() => { setAdminMode(false); window.history.pushState({}, '', '/') }} />
 
   return (
     <>
@@ -360,7 +360,7 @@ export default function App() {
             </div>
 
             <div className="grid">
-              {allProducts.filter(p => p.category === cat || cat === 'all').map(p => {
+              {allProducts.filter(p => p.category?.toLowerCase() === cat?.toLowerCase() || cat === 'all').map(p => {
                 const isSel = sel.find(x => x.id === p.id)
                 const pImage = p.image || p.image_url
                 return (
@@ -376,7 +376,7 @@ export default function App() {
                       <div className="cname">{p.name}</div>
                       <div className="cdet">{p.detail}</div>
                       <div className="cdots">
-                        {p.colors.map((c, i) => <div key={i} className="dot" style={{background:c}} />)}
+                        {(p.colors||[]).map((c, i) => <div key={i} className="dot" style={{background:c}} />)}
                       </div>
                     </div>
                   </div>
