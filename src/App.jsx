@@ -193,6 +193,7 @@ export default function App() {
   const [sending, setSending]   = useState(false)
   const fileRef = useRef()
   const [adminMode, setAdminMode] = useState(window.location.pathname === '/admin')
+  const [lightbox, setLightbox] = useState(null)
   const [dbProducts, setDbProducts] = useState([])
   const allProducts = dbProducts.length > 0 ? dbProducts : PRODUCTS
 
@@ -506,7 +507,7 @@ export default function App() {
 
             {(!genImg || !showGen) && (
               <div className="riwrap" style={{position:'relative'}}>
-                <img src={imgPrev} className="rimg" style={{height:'auto',maxHeight:280}} alt="Tu espacio" onClick={() => setLightbox({src: imgPrev, label: 'Tu foto original'})} style={{cursor:'zoom-in'}} />
+                <img src={imgPrev} className="rimg" style={{height:'auto',maxHeight:280,cursor:'zoom-in'}} alt="Tu espacio" onClick={() => setLightbox({src: imgPrev, label: 'Tu foto original'})} />
                 <div className="rbadge">📷 {!genImg ? result.style : 'Foto original'}</div>
                 <button className="expand-btn" onClick={() => setLightbox({src: imgPrev, label: 'Tu foto original'})}>⤢ Ampliar</button>
               </div>
