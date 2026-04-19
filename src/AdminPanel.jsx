@@ -75,16 +75,16 @@ export default function AdminPanel({ onBack }) {
   const [authChecked, setAuthChecked] = useState(false)
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session)
-      setAuthChecked(true)
-      if (session) { loadCategories(); loadProducts() }
-    })
+    // onAuthStateChange se dispara inmediatamente con el estado actual
+    // incluso cuando se entra por URL directa con magic link
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_e, sess) => {
       setSession(sess)
+      setAuthChecked(true)
       if (sess) { loadCategories(); loadProducts() }
     })
-    return () => subscription.unsubscribe()
+    // Timeout fallback: si en 3s no hubo evento, marcamos como verificado (sin sesión)
+    const timeout = setTimeout(() => setAuthChecked(true), 3000)
+    return () => { subscription.unsubscribe(); clearTimeout(timeout) }
   }, [])
 
   const showMsg = (text, type = 'ok') => {
