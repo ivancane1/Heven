@@ -250,9 +250,18 @@ export default function AdminPanel({ onBack }) {
   async function sendAdminLink() {
     if (!loginEmail) return
     setLoginLoading(true)
-    const { error } = await supabase.auth.signInWithOtp({ email: loginEmail })
+    const { error } = await supabase.auth.signInWithOtp({
+      email: loginEmail,
+      options: {
+        emailRedirectTo: window.location.origin + '/admin'
+      }
+    })
     setLoginLoading(false)
-    if (!error) setLoginSent(true)
+    if (error) {
+      showMsg('Error: ' + error.message, 'err')
+    } else {
+      setLoginSent(true)
+    }
   }
 
   if (authChecked && !session) return (
