@@ -103,6 +103,20 @@ const CSS = `
   .moverlay{position:fixed;inset:0;background:rgba(0,0,0,.5);display:flex;align-items:flex-end;justify-content:center;z-index:200;backdrop-filter:blur(4px)}
   .modal{background:var(--white);border-radius:24px 24px 0 0;padding:32px 24px 40px;width:100%;max-width:430px;animation:sup .35s}
   @keyframes sup{from{transform:translateY(100%)}to{transform:translateY(0)}}
+  
+  .pstrip{display:flex;gap:10px;overflow-x:auto;padding:4px 0 12px;margin-bottom:8px}
+  .pstrip::-webkit-scrollbar{display:none}
+  .pthumb{flex-shrink:0;width:80px;border-radius:10px;overflow:hidden;border:2px solid transparent;cursor:pointer;transition:.2s}
+  .pthumb.on{border-color:var(--terra)}
+  .pthumb img{width:80px;height:80px;object-fit:cover;display:block}
+  .pthumb-name{font-size:9px;color:var(--gray);text-align:center;padding:4px 2px;line-height:1.2}
+  .lightbox{position:fixed;inset:0;background:rgba(0,0,0,.92);z-index:300;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:20px;animation:fadein .2s}
+  @keyframes fadein{from{opacity:0}to{opacity:1}}
+  .lightbox img{max-width:100%;max-height:80vh;object-fit:contain;border-radius:12px}
+  .lightbox-close{position:absolute;top:16px;right:16px;background:rgba(255,255,255,.15);border:none;color:#fff;font-size:22px;width:40px;height:40px;border-radius:50%;cursor:pointer;display:flex;align-items:center;justify-content:center}
+  .lightbox-label{color:rgba(255,255,255,.7);font-size:11px;letter-spacing:.1em;text-transform:uppercase;margin-top:14px}
+  .expand-btn{position:absolute;bottom:10px;right:10px;background:rgba(255,255,255,.85);border:none;border-radius:20px;padding:5px 12px;font-size:11px;color:var(--dark);cursor:pointer;font-family:"Jost",sans-serif;letter-spacing:.06em;backdrop-filter:blur(4px)}
+
   .mhandle{width:40px;height:4px;background:var(--linen);border-radius:2px;margin:0 auto 24px}
   .mttl{font-family:'Cormorant Garamond',serif;font-size:26px;font-weight:300;color:var(--dark);margin-bottom:8px}
   .mttl em{font-style:italic;color:var(--terra)}
@@ -483,22 +497,41 @@ export default function App() {
 
             {genImg && showGen && (
               <div className="genimg-wrap">
-                <img src={genImg} className="genimg" alt="Tu espacio con productos" />
+                <img src={genImg} className="genimg" alt="Tu espacio con productos" onClick={() => setLightbox({src: genImg, label: 'Visualización con IA'})} style={{cursor:'zoom-in'}} />
                 <div className="genbadge">✦ {result.style}</div>
                 <div className="aibadge">Generado con IA</div>
+                <button className="expand-btn" onClick={() => setLightbox({src: genImg, label: 'Visualización con IA'})}>⤢ Ampliar</button>
               </div>
             )}
 
             {(!genImg || !showGen) && (
-              <div className="riwrap">
-                <img src={imgPrev} className="rimg" style={{height:'auto',maxHeight:280}} alt="Tu espacio" />
+              <div className="riwrap" style={{position:'relative'}}>
+                <img src={imgPrev} className="rimg" style={{height:'auto',maxHeight:280}} alt="Tu espacio" onClick={() => setLightbox({src: imgPrev, label: 'Tu foto original'})} style={{cursor:'zoom-in'}} />
                 <div className="rbadge">📷 {!genImg ? result.style : 'Foto original'}</div>
+                <button className="expand-btn" onClick={() => setLightbox({src: imgPrev, label: 'Tu foto original'})}>⤢ Ampliar</button>
               </div>
             )}
 
-            <div className="chips" style={{marginTop:12}}>
-              {sel.map(p => <span key={p.id} className="chip">{p.emoji} {p.name}</span>)}
-            </div>
+            {/* Strip de productos seleccionados con foto real */}
+            {sel.some(p => p.image || p.image_url) && (
+              <div style={{marginTop:12,marginBottom:4}}>
+                <div className="stit">Productos seleccionados</div>
+                <div className="pstrip">
+                  {sel.map(p => {
+                    const pImg = p.image_url || (p.image ? p.image : null)
+                    return (
+                      <div key={p.id} className="pthumb" onClick={() => pImg && setLightbox({src: pImg, label: p.name})}>
+                        {pImg
+                          ? <img src={pImg} alt={p.name} />
+                          : <div style={{width:80,height:80,background:'var(--linen)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:28}}>{p.emoji}</div>
+                        }
+                        <div className="pthumb-name">{p.name}</div>
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+            )}
 
             <div className="rcard">
               <div className="rlbl">✦ Análisis de tu espacio</div>
@@ -575,6 +608,15 @@ export default function App() {
         )}
 
       </div>
+
+      {/* ── LIGHTBOX ── */}
+      {lightbox && (
+        <div className="lightbox" onClick={() => setLightbox(null)}>
+          <button className="lightbox-close" onClick={() => setLightbox(null)}>✕</button>
+          <img src={lightbox.src} alt={lightbox.label} onClick={e => e.stopPropagation()} />
+          <div className="lightbox-label">{lightbox.label}</div>
+        </div>
+      )}
     </>
   )
 }
