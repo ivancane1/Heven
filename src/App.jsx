@@ -116,6 +116,48 @@ const CSS = `
   .ubox{text-align:center;margin-top:16px;padding:14px 16px;background:var(--linen);border-radius:12px}
 `
 
+
+// Combina foto producto (izq) + habitación (der) en una sola imagen usando canvas del browser
+async function stitchImages(productUrl, roomBase64, roomType) {
+  return new Promise((resolve) => {
+    const SIZE = 768
+    const canvas = document.createElement('canvas')
+    canvas.width = SIZE * 2
+    canvas.height = SIZE
+    const ctx = canvas.getContext('2d')
+    ctx.fillStyle = '#111'
+    ctx.fillRect(0, 0, SIZE * 2, SIZE)
+
+    const roomImg = new Image()
+    const productImg = new Image()
+    productImg.crossOrigin = 'anonymous'
+
+    let loaded = 0
+    const onLoad = () => {
+      loaded++
+      if (loaded < 2) return
+      // Producto a la izquierda
+      const pR = Math.min(SIZE / productImg.width, SIZE / productImg.height)
+      const pW = productImg.width * pR, pH = productImg.height * pR
+      ctx.drawImage(productImg, (SIZE - pW) / 2, (SIZE - pH) / 2, pW, pH)
+      // Habitación a la derecha
+      const rR = Math.min(SIZE / roomImg.width, SIZE / roomImg.height)
+      const rW = roomImg.width * rR, rH = roomImg.height * rR
+      ctx.drawImage(roomImg, SIZE + (SIZE - rW) / 2, (SIZE - rH) / 2, rW, rH)
+
+      const dataUrl = canvas.toDataURL('image/jpeg', 0.88)
+      resolve(dataUrl.split(',')[1])
+    }
+
+    roomImg.onload = onLoad
+    productImg.onload = onLoad
+    productImg.onerror = () => { loaded++; onLoad() } // fallback si CORS falla
+
+    roomImg.src = `data:${roomType || 'image/jpeg'};base64,${roomBase64}`
+    productImg.src = productUrl
+  })
+}
+
 export default function App() {
   const [screen, setScreen]     = useState(1)
   const [imgFile, setImgFile]   = useState(null)
@@ -203,19 +245,36 @@ export default function App() {
       setLoadStep('Generando la visualización con IA…')
 
       // Tomar el primer producto con imagen real
-      const productWithImage = sel.find(p => p.image)
+      const productWithImage = sel.find(p => p.image || p.image_url)
       const productImageUrl = productWithImage
-        ? `${window.location.origin}${productWithImage.image}`
+        ? (productWithImage.image_url || `${window.location.origin}${productWithImage.image}`)
         : null
+      const productDescription = sel.map(p => p.tags || p.name).join('. ')
+
+      // Combinar producto + habitación en una sola imagen para que el modelo VEA el producto
+      let stitchedBase64 = null
+      if (productImageUrl) {
+        try {
+          setLoadStep('Preparando imágenes…')
+          stitchedBase64 = await stitchImages(productImageUrl, img64, imgFile?.type || 'image/jpeg')
+          console.log('Imágenes combinadas, tamaño base64:', stitchedBase64?.length)
+        } catch (e) {
+          console.warn('Stitching falló, usando solo habitación:', e.message)
+        }
+      }
+
+      setLoadStep('Generando la visualización con IA…')
 
       const res2 = await fetch('/api/generate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          imageBase64: img64,
-          imageType: imgFile?.type || 'image/jpeg',
+          imageBase64: stitchedBase64 || img64,
+          imageType: 'image/jpeg',
+          isStitched: !!stitchedBase64,
           productImageUrl,
           productName: sel.map(p => p.name).join(', '),
+          productDescription,
           style: parsed.style,
         }),
       })
