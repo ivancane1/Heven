@@ -134,9 +134,25 @@ export default function AdminPanel({ onBack }) {
     if (!imgPrev) return
     setAnalyzing(true)
     try {
-      const base64 = imgPrev.split(',')[1]
-      const mimeMatch = imgPrev.match(/data:([^;]+);/)
-      const imageType = mimeMatch ? mimeMatch[1] : 'image/jpeg'
+      let base64, imageType
+
+      if (imgPrev.startsWith('data:')) {
+        // Imagen nueva subida localmente
+        base64 = imgPrev.split(',')[1]
+        const mimeMatch = imgPrev.match(/data:([^;]+);/)
+        imageType = mimeMatch ? mimeMatch[1] : 'image/jpeg'
+      } else {
+        // Imagen remota (Supabase Storage) — descargar y convertir
+        const response = await fetch(imgPrev)
+        const blob = await response.blob()
+        imageType = blob.type || 'image/jpeg'
+        base64 = await new Promise((resolve, reject) => {
+          const reader = new FileReader()
+          reader.onload = () => resolve(reader.result.split(',')[1])
+          reader.onerror = reject
+          reader.readAsDataURL(blob)
+        })
+      }
 
       const res = await fetch('/api/admin-analyze', {
         method: 'POST',
