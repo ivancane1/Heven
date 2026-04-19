@@ -172,6 +172,26 @@ async function stitchImages(productUrl, roomBase64, roomType) {
   })
 }
 
+
+// Cuando el resultado es una imagen stitched (2 paneles), recortamos solo el panel derecho
+async function cropRightPanel(imageUrl) {
+  return new Promise((resolve) => {
+    const img = new Image()
+    img.crossOrigin = 'anonymous'
+    img.onload = () => {
+      const halfW = Math.floor(img.width / 2)
+      const canvas = document.createElement('canvas')
+      canvas.width = halfW
+      canvas.height = img.height
+      const ctx = canvas.getContext('2d')
+      ctx.drawImage(img, halfW, 0, halfW, img.height, 0, 0, halfW, img.height)
+      resolve(canvas.toDataURL('image/jpeg', 0.92))
+    }
+    img.onerror = () => resolve(imageUrl) // fallback: mostrar imagen completa
+    img.src = imageUrl
+  })
+}
+
 export default function App() {
   const [screen, setScreen]     = useState(1)
   const [imgFile, setImgFile]   = useState(null)
@@ -296,7 +316,14 @@ export default function App() {
 
       if (res2.ok) {
         const data2 = await res2.json()
-        if (data2.imageUrl) { setGenImg(data2.imageUrl); setShowGen(true) }
+        if (data2.imageUrl) {
+          // Si enviamos imagen stitched, recortar solo el panel derecho (habitación editada)
+          const finalImg = stitchedBase64
+            ? await cropRightPanel(data2.imageUrl)
+            : data2.imageUrl
+          setGenImg(finalImg)
+          setShowGen(true)
+        }
       } else {
         console.warn('Fal.ai falló')
         setShowGen(false)
